@@ -109,17 +109,29 @@ def _process_inner(
     )
 
     t = os.path.join(case_dir, time_dir)
-    p = of_io.read_internal_field(os.path.join(t, "p"))
+    # Gebruik mean-waarden voor tijdsgemiddelde resultaten
+    p_path = os.path.join(t, "pMean") if os.path.exists(os.path.join(t, "pMean")) else os.path.join(t, "p")
+    wss_path = os.path.join(t, "wallShearStressMean") if os.path.exists(os.path.join(t, "wallShearStressMean")) else os.path.join(t, "wallShearStress")
+    u_path = os.path.join(t, "UMean") if os.path.exists(os.path.join(t, "UMean")) else os.path.join(t, "U")
+    
+    # Log welke mean-velden ontbreken
+    missing_mean = []
+    if not os.path.exists(os.path.join(t, "pMean")):
+        missing_mean.append("pMean")
+    if not os.path.exists(os.path.join(t, "wallShearStressMean")):
+        missing_mean.append("wallShearStressMean")
+    if not os.path.exists(os.path.join(t, "UMean")):
+        missing_mean.append("UMean")
+    if missing_mean:
+        log.warning("mean-velden ontbreken: %s; valt terug op niet-gemiddelde velden", ", ".join(missing_mean))
+    
+    p = of_io.read_internal_field(p_path)
     n_cells = len(p)
     log.info("p gelezen: %d cellen", n_cells)
 
-    wss_patches = of_io.read_patch_values(
-        os.path.join(t, "wallShearStress"), patch_names=list(body_patches)
-    )
-    # Gebruik UMean als beschikbaar (tijdsgemiddeld), anders U
-    u_path = os.path.join(t, "UMean") if os.path.exists(os.path.join(t, "UMean")) else os.path.join(t, "U")
+    wss_patches = of_io.read_patch_values(wss_path, patch_names=list(body_patches))
     u = of_io.read_internal_field(u_path)
-    log.info("velden gelezen: p, wallShearStress, %s", os.path.basename(u_path))
+    log.info("velden gelezen: %s, %s, %s", os.path.basename(p_path), os.path.basename(wss_path), os.path.basename(u_path))
 
     # ---- krachten en frontaal oppervlak ------------------------------------
     q = 0.5 * rho * u_ref**2  # dynamische druk
