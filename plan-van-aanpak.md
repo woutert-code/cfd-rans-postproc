@@ -178,6 +178,10 @@ slices, batchverwerking van meerdere cases, batch-logging (zie §9).
 
 - Versie 2: uitbreiding van de output — geometriefiguur met
   Cp-distributie, additionele slices — na validatie van versie 1.
+- Versie 2+: verbetering van de slice-generatie methode (zie §12, open punt 7)
+  om de efficiëntie en flexibiliteit te vergroten (bijv. dynamische selectie van
+  slice-posities, betere handling van mesh-grenzen, of geoptimaliseerde
+  triangulatie voor tripcolor).
 - Daarna/bewust later: batchverwerking van meerdere cases met
   overzichtelijke batch-logging; toepassing op andere sporterscases
   (schaatser, skeleton) en groepen; mogelijk verdere visualisaties naar
@@ -265,6 +269,11 @@ Uitzoeklijst voor de bouwagent (nog niet uitgevoerd):
    versie 2 nodig is.
 6. Het logbestandformaat en de foutafhandeling uitwerken (foutmeldingen
    zonder namen van personen of inhoudelijke fragmenten van veldwaarden).
+7. Verbetering van de slice-generatie methode voor versie 2+: de huidige
+   implementatie genereert slices per positie met tripcolor, maar kan
+   efficiënter of flexibeler. Opties: dynamische selectie van posities,
+   betere handling van mesh-grenzen, geoptimaliseerde triangulatie, of
+   alternatieve visualisatiemethodes.
 
 Technische controles of bouw zijn bij dit plan nog niet uitgevoerd.
 
