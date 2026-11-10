@@ -1,0 +1,16 @@
+# Lokale/gevoelige en gegenereerde bestanden uitsluiten
+.env
+.env.*
+!.env.example
+data/private/
+media/private/
+logs/runtime/
+logs/test/
+output/
+output-custom/
+tmp/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+Thumbs.db
