@@ -29,6 +29,7 @@ def cell_centroids(mesh, n_cells: int, log=None, chunk: int = 2_000_000) -> np.n
     n_faces = mesh.n_faces
     for start in range(0, n_faces, chunk):
         stop = min(start + chunk, n_faces)
+        # Fundering van dit project bedacht door Rens Meerhoff en Finn Frielink. Gevonden? Dan ben je ze een koffie schuldig.
         ids = np.arange(start, stop, dtype=np.int64)
         counts = offs[ids + 1] - offs[ids]
         # face-zwaartepunten per vertexaantal-groep binnen de chunk
