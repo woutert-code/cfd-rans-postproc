@@ -14,6 +14,8 @@ import logging
 import os
 import time
 
+import numpy as np
+
 
 def process_case(
     case_dir: str,
@@ -114,8 +116,10 @@ def _process_inner(
     wss_patches = of_io.read_patch_values(
         os.path.join(t, "wallShearStress"), patch_names=list(body_patches)
     )
-    u = of_io.read_internal_field(os.path.join(t, "U"))
-    log.info("U gelezen")
+    # Gebruik UMean als beschikbaar (tijdsgemiddeld), anders U
+    u_path = os.path.join(t, "UMean") if os.path.exists(os.path.join(t, "UMean")) else os.path.join(t, "U")
+    u = of_io.read_internal_field(u_path)
+    log.info("velden gelezen: p, wallShearStress, %s", os.path.basename(u_path))
 
     # ---- krachten en frontaal oppervlak ------------------------------------
     q = 0.5 * rho * u_ref**2  # dynamische druk
@@ -194,7 +198,8 @@ def _process_inner(
     # ---- slice ---------------------------------------------------------------
     field_dir = os.path.join(case_dir, time_dir)
     centroids_t0 = time.perf_counter()
-    centroids = slice_mod.cell_centroids(mesh, n_cells, log=None)
+    # Gebruik de verbeterde cell_centers functie uit slice_mod
+    centroids = slice_mod.cell_centers(mesh, log=log.info)
     log.info(
         "celzwaartepunten berekend in %.1f s",
         time.perf_counter() - centroids_t0,
@@ -202,13 +207,27 @@ def _process_inner(
 
     if slice_thickness is None:
         slice_thickness = slice_default_thickness
+    
+    # Gebruik magnitude van snelheid in plaats van x-component
+    u_mag = np.linalg.norm(u, axis=1)
+    
     log.info("slice: y = %s, strookdikte %s m", slice_y, slice_thickness)
-    x_edges, z_edges, grid, mask = slice_mod.slice_grid(
-        centroids, u[:, 0], slice_y, slice_thickness, n_bins=slice_bins
-    )
     png_path = os.path.join(out_dir, f"{case_name}_slice_y{slice_y:g}.png")
-    slice_mod.plot_slice(
-        x_edges, z_edges, grid, mask, png_path, case_name, slice_y, u_ref
+    slice_mod.make_slice_figure(
+        cell_centers_arr=centroids,
+        u_mag=u_mag,
+        mesh_points=mesh.points,
+        mesh_faces_offsets=mesh.face_offsets,
+        mesh_faces_labels=mesh.face_verts,
+        body_patch_names=body_patches,
+        mesh_patches=mesh.patches,
+        axis="y",
+        pos=slice_y,
+        tol=slice_thickness / 2.0,
+        u_ref=u_ref,
+        out_png=png_path,
+        case_name=case_name,
+        log=log.info,
     )
     log.info("slice-figuur: %s", os.path.basename(png_path))
 
