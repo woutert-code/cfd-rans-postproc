@@ -36,7 +36,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="referentiesnelheid [m/s]; standaard u_inlet uit system/Variables",
     )
     parser.add_argument(
-        "--slice-y", type=float, default=0.0, help="slice-positie in y [m] (default 0)"
+        "--slice-y",
+        type=str,
+        default="0.0",
+        help="slice-positie(s) in y [m], komma-gescheiden (default: 0.0)",
+    )
+    parser.add_argument(
+        "--slice-x",
+        type=str,
+        default="-1.0,-0.9,-0.8,-0.7,-0.6,-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9",
+        help="slice-positie(s) in x [m], komma-gescheiden (default: -1.0 tot 1.9 in stappen van 0.1)",
     )
     parser.add_argument(
         "--slice-thickness",
@@ -75,6 +84,10 @@ def main(argv=None) -> int:
 
     from .case_runner import process_case
 
+    # Parse slice positions (komma-gescheiden)
+    y_positions = [float(s.strip()) for s in args.slice_y.split(",") if s.strip()]
+    x_positions = [float(s.strip()) for s in args.slice_x.split(",") if s.strip()]
+    
     try:
         result = process_case(
             case_dir=args.case,
@@ -84,7 +97,8 @@ def main(argv=None) -> int:
             ),
             rho=args.rho,
             u_ref=args.u_ref,
-            slice_y=args.slice_y,
+            slice_y=y_positions,
+            slice_x=x_positions,
             slice_thickness=args.slice_thickness,
             output_name=args.output_dir,
             overwrite=args.overwrite,
@@ -100,7 +114,11 @@ def main(argv=None) -> int:
 
     print(f"Klaar. Output: {result['output_dir']}")
     print(f"  results.csv: {result['results_csv']}")
-    print(f"  slice:       {result['slice_png']}")
+    if isinstance(result.get('slice_png'), list):
+        for png in result['slice_png']:
+            print(f"  slice:       {png}")
+    else:
+        print(f"  slice:       {result['slice_png']}")
     print(f"  log:         {result['log']}")
     return 0
 

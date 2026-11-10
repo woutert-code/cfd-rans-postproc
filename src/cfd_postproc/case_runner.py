@@ -23,7 +23,8 @@ def process_case(
     body_patches: tuple[str, ...] = ("pilot", "stoker"),
     rho: float = 1.225,
     u_ref: float | None = None,
-    slice_y: float = 0.0,
+    slice_y: float | list[float] = 0.0,
+    slice_x: float | list[float] | None = None,
     slice_thickness: float | None = None,
     output_name: str = "output-custom",
     overwrite: bool = False,
@@ -62,7 +63,7 @@ def process_case(
     try:
         return _process_inner(
             case_dir, case_name, time_dir, body_patches, rho, u_ref,
-            slice_y, slice_thickness, out_dir, overwrite, frontal_dx,
+            slice_y, slice_x, slice_thickness, out_dir, overwrite, frontal_dx,
             slice_bins, t_start, logfile, slice_default_thickness,
         )
     except Exception:
@@ -76,7 +77,7 @@ def process_case(
 
 
 def _process_inner(
-    case_dir, case_name, time_dir, body_patches, rho, u_ref, slice_y,
+    case_dir, case_name, time_dir, body_patches, rho, u_ref, slice_y, slice_x,
     slice_thickness, out_dir, overwrite, frontal_dx, slice_bins, t_start, logfile,
     slice_default_thickness,
 ):
@@ -207,7 +208,7 @@ def _process_inner(
         log,
     )
 
-    # ---- slice ---------------------------------------------------------------
+    # ---- slice(s) ------------------------------------------------------------
     field_dir = os.path.join(case_dir, time_dir)
     centroids_t0 = time.perf_counter()
     # Gebruik de verbeterde cell_centers functie uit slice_mod
@@ -223,30 +224,70 @@ def _process_inner(
     # Gebruik magnitude van snelheid in plaats van x-component
     u_mag = np.linalg.norm(u, axis=1)
     
-    log.info("slice: y = %s, strookdikte %s m", slice_y, slice_thickness)
-    png_path = os.path.join(out_dir, f"{case_name}_slice_y{slice_y:g}.png")
-    slice_mod.make_slice_figure(
-        cell_centers_arr=centroids,
-        u_mag=u_mag,
-        mesh_points=mesh.points,
-        mesh_faces_offsets=mesh.face_offsets,
-        mesh_faces_labels=mesh.face_verts,
-        body_patch_names=body_patches,
-        mesh_patches=mesh.patches,
-        axis="y",
-        pos=slice_y,
-        tol=slice_thickness / 2.0,
-        u_ref=u_ref,
-        out_png=png_path,
-        case_name=case_name,
-        log=log.info,
-    )
-    log.info("slice-figuur: %s", os.path.basename(png_path))
+    # Genereer slices voor y- en x-posities
+    slice_pngs = []
+    
+    # Y-slices
+    if isinstance(slice_y, (int, float)):
+        y_positions = [float(slice_y)]
+    else:
+        y_positions = list(slice_y) if slice_y else []
+    
+    for pos in y_positions:
+        log.info("slice: y = %s, strookdikte %s m", pos, slice_thickness)
+        png_path = os.path.join(out_dir, f"{case_name}_slice_y{pos:g}.png")
+        slice_mod.make_slice_figure(
+            cell_centers_arr=centroids,
+            u_mag=u_mag,
+            mesh_points=mesh.points,
+            mesh_faces_offsets=mesh.face_offsets,
+            mesh_faces_labels=mesh.face_verts,
+            body_patch_names=body_patches,
+            mesh_patches=mesh.patches,
+            axis="y",
+            pos=pos,
+            tol=slice_thickness / 2.0,
+            u_ref=u_ref,
+            out_png=png_path,
+            case_name=case_name,
+            log=log.info,
+        )
+        slice_pngs.append(png_path)
+        log.info("slice-figuur: %s", os.path.basename(png_path))
+    
+    # X-slices
+    if slice_x is not None:
+        if isinstance(slice_x, (int, float)):
+            x_positions = [float(slice_x)]
+        else:
+            x_positions = list(slice_x) if slice_x else []
+        
+        for pos in x_positions:
+            log.info("slice: x = %s, strookdikte %s m", pos, slice_thickness)
+            png_path = os.path.join(out_dir, f"{case_name}_slice_x{pos:g}.png")
+            slice_mod.make_slice_figure(
+                cell_centers_arr=centroids,
+                u_mag=u_mag,
+                mesh_points=mesh.points,
+                mesh_faces_offsets=mesh.face_offsets,
+                mesh_faces_labels=mesh.face_verts,
+                body_patch_names=body_patches,
+                mesh_patches=mesh.patches,
+                axis="x",
+                pos=pos,
+                tol=slice_thickness / 2.0,
+                u_ref=u_ref,
+                out_png=png_path,
+                case_name=case_name,
+                log=log.info,
+            )
+            slice_pngs.append(png_path)
+            log.info("slice-figuur: %s", os.path.basename(png_path))
 
     return {
         "output_dir": out_dir,
         "results_csv": csv_path,
-        "slice_png": png_path,
+        "slice_png": slice_pngs if len(slice_pngs) > 1 else slice_pngs[0],
         "log": logfile,
         "per_patch": per_patch,
         "totaal": {
