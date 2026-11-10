@@ -227,9 +227,12 @@ class StructuredCase:
             counts = np.array([len(v) for v in self.faces], dtype="<i4")
             offsets = np.zeros(len(counts) + 1, dtype="<i4")
             offsets[1:] = np.cumsum(counts)
+            flat = np.concatenate([np.array(v, dtype="<i4") for v in self.faces])
+            # echt v2006-formaat: '<n_offsets>\n(' offsets
+            # ')\n<n_verts>\n(' vertexlabels ')'
             f.write(str(len(offsets)).encode() + b"\n(")
             f.write(offsets.tobytes())
-            flat = np.concatenate([np.array(v, dtype="<i4") for v in self.faces])
+            f.write(b")\n" + str(len(flat)).encode() + b"\n(")
             f.write(flat.tobytes())
             f.write(b")\n\n")
 

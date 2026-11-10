@@ -61,7 +61,7 @@ def process_case(
         return _process_inner(
             case_dir, case_name, time_dir, body_patches, rho, u_ref,
             slice_y, slice_thickness, out_dir, overwrite, frontal_dx,
-            slice_bins, t_start, logfile,
+            slice_bins, t_start, logfile, slice_default_thickness,
         )
     except Exception:
         log.exception("verwerking mislukt")
@@ -76,6 +76,7 @@ def process_case(
 def _process_inner(
     case_dir, case_name, time_dir, body_patches, rho, u_ref, slice_y,
     slice_thickness, out_dir, overwrite, frontal_dx, slice_bins, t_start, logfile,
+    slice_default_thickness,
 ):
     from . import krachten, of_io, slice as slice_mod
 
@@ -110,7 +111,9 @@ def _process_inner(
     n_cells = len(p)
     log.info("p gelezen: %d cellen", n_cells)
 
-    wss_patches = of_io.read_patch_values(os.path.join(t, "wallShearStress"))
+    wss_patches = of_io.read_patch_values(
+        os.path.join(t, "wallShearStress"), patch_names=list(body_patches)
+    )
     u = of_io.read_internal_field(os.path.join(t, "U"))
     log.info("U gelezen")
 

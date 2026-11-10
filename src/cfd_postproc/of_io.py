@@ -93,28 +93,55 @@ def read_internal_field(path: str, dtype=np.float32) -> np.ndarray:
     return arr
 
 
-def read_patch_values(path: str) -> dict[str, np.ndarray]:
-    """Lees de boundaryField-waarden per patch uit een veldbestand.
+def read_patch_values(path: str, patch_names: list | None = None) -> dict[str, np.ndarray]:
+    """Lees de boundaryField-waarden van patches uit een veldbestand.
 
-    Returned een dict met patchnaam -> ndarray (n, 3) voor vectoren of
-    (n,) voor scalairen. Uniforme patchwaarden worden herhaald over het
-    aantal faces van de patch (via de boundary-file als die al geparseerd
-    is, anders als lengte-1rray). Patches zonder data (zoals zeroGradient)
-    worden overgeslagen.
+    Met ``patch_names`` wordt per opgegeven patchnaam gericht gezocht; dat
+    is bestand tegen ``{``- en ``}``-bytes in de binaire data van eerdere
+    patches. Zonder ``patch_names`` worden alle leesbare patches geretourneerd.
+    Uniforme patchwaarden worden als lengte-1-vector teruggegeven; patches
+    zonder data (zoals zeroGradient) ontbreken in het resultaat.
     """
-    size = os.path.getsize(path)
     with open(path, "rb") as f:
         raw = f.read()
     off = body_offset(raw)
     i = raw.find(b"boundaryField", off)
     if i < 0:
         return {}
-    region = raw[i:]
-    # neutraliseer binaire interne data vóór boundaryField niet nodig:
-    # boundaryField staat ná de interne data; region is nu ascii+binaire mix.
-    del raw
 
     result: dict[str, np.ndarray] = {}
+    if patch_names:
+        for naam in patch_names:
+            nm = re.compile(
+                rb"(?<![\w.\-])"
+                + re.escape(naam.encode("ascii"))
+                + rb"\s*\r?\n\s*\{"
+            ).search(raw, i)
+            if nm is None:
+                continue
+            window = raw[nm.end(): nm.end() + 1024]
+            vm = re.compile(rb"nonuniform\s+List<(\w+)>\s*(\d+)\s*\(").search(window)
+            if vm is not None:
+                ncomp = 3 if vm.group(1) == b"vector" else 1
+                count = int(vm.group(2))
+                abs_off = nm.end() + vm.end()
+                if ncomp == 3:
+                    v = np.fromfile(path, dtype="<f8", count=count * 3, offset=abs_off)
+                    result[naam] = v.reshape(-1, 3).astype(np.float32, copy=False)
+                else:
+                    v = np.fromfile(path, dtype="<f8", count=count, offset=abs_off)
+                    result[naam] = v.astype(np.float32, copy=False)
+                continue
+            um = re.compile(rb"value\s+uniform\s+([^;\n]+)").search(window)
+            if um is not None:
+                tok = um.group(1).decode("ascii", "replace").strip()
+                vals = [float(x) for x in tok.strip("() ").split()] or [0.0]
+                result[naam] = np.array([vals], dtype=np.float32)[0]
+        return result
+
+    # zonder namen: simpele scan over ascii-blokken (kan binaire storing geven)
+    region = raw[i:]
+    del raw
     block_re = re.compile(rb"([\w.\-]+)\s*\{([^{}]*)\}", re.S)
     for m in block_re.finditer(region):
         name = m.group(1).decode("ascii")
@@ -123,8 +150,6 @@ def read_patch_values(path: str) -> dict[str, np.ndarray]:
         if vm is not None:
             ncomp = 3 if vm.group(1) == b"vector" else 1
             count = int(vm.group(2))
-            # vm is gematcht binnen body (m.group(2)), die in region begint
-            # op m.start(2): absolute bestandsoffset = i + m.start(2) + vm.end().
             abs_off_in_file = i + m.start(2) + vm.end()
             if ncomp == 3:
                 v = np.fromfile(path, dtype="<f8", count=count * 3, offset=abs_off_in_file)
@@ -139,7 +164,7 @@ def read_patch_values(path: str) -> dict[str, np.ndarray]:
             tok = um.group(1).decode("ascii", "replace").strip()
             vals = [float(x) for x in tok.strip("() ").split()] or [0.0]
             result[name] = np.array([vals], dtype=np.float32)[0]
-    del region, size
+    del region
     return result
 
 
@@ -240,13 +265,22 @@ def read_mesh(case_dir: str, points_as_float32: bool = True) -> FoamMesh:
     n_off = int(m.group(1))
     binary_start = off + skipped + m.end()
     offsets = np.fromfile(fpath, dtype="<i4", count=n_off, offset=binary_start)
-    fsize = os.path.getsize(fpath)
-    n_verts = (fsize - binary_start - n_off * 4) // 4
-    if n_verts < 0:
-        n_verts = 0
-    face_verts = np.fromfile(
-        fpath, dtype="<i4", count=n_verts, offset=binary_start + n_off * 4
-    )
+    # Na de offset-tabel volgt een tweede binaire lijst met de vertexlabels,
+    # voorafgegaaan door de ascii-overgang ') <count> ('.
+    with open(fpath, "rb") as f:
+        f.seek(binary_start + n_off * 4)
+        window = f.read(256)
+    tm = re.compile(rb"\)\s*(\d+)\s*\(").match(window.lstrip())
+    if tm is None:
+        raise ValueError("tweede lijst (vertexlabels) niet gevonden in faces-file")
+    skipped2 = len(window) - len(window.lstrip())
+    n_verts = int(tm.group(1))
+    if n_verts != int(offsets[-1]):
+        raise ValueError(
+            f"faces-file inconsistent: laatste offset {offsets[-1]} <> {n_verts} vertices"
+        )
+    verts_start = binary_start + n_off * 4 + skipped2 + tm.end()
+    face_verts = np.fromfile(fpath, dtype="<i4", count=n_verts, offset=verts_start)
     if int(offsets[-1]) != n_verts:
         raise ValueError(
             f"faces-file inconsistent: laatste offset {offsets[-1]} <> {n_verts} vertices"

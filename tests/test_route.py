@@ -10,7 +10,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from cfd_postproc import case_runner  # noqa: E402
+from cfd_postproc import case_runner, krachten  # noqa: E402
 from cfd_postproc.__main__ import main  # noqa: E402
 from foam_fixture import StructuredCase  # noqa: E402
 
@@ -49,10 +49,15 @@ class RouteTest(unittest.TestCase):
             rows = list(csv.DictReader(f))
         self.assertEqual({r["patch"] for r in rows}, {"pilot", "totaal"})
 
-        # Druk + schuif op 0.04 m2 pijler vlak: kinematisch p=10, wss_x=0.5.
+        # Druk + schuif op 0.04 m2 pijler vlak: kinematisch p=10, wss_x=0.5;
+        # schuif met de SHEAR_SIGN-conventie uit krachten.py.
         q = 0.5 * RHO * U_REF**2
-        verwacht = RHO * (10.0 + 0.5) * 0.04
+        druk = RHO * 10.0 * 0.04
+        schuif = krachten.SHEAR_SIGN * RHO * 0.5 * 0.04
+        verwacht = druk + schuif
         pilot = next(r for r in rows if r["patch"] == "pilot")
+        self.assertAlmostEqual(float(pilot["drukkracht_N"]), druk, delta=1e-6)
+        self.assertAlmostEqual(float(pilot["schuifkracht_N"]), schuif, delta=1e-6)
         self.assertAlmostEqual(float(pilot["weerstand_N"]), verwacht, delta=1e-6)
         self.assertAlmostEqual(float(pilot["frontaal_oppervlak_m2"]), 0.04, delta=0.002)
         self.assertAlmostEqual(float(pilot["CdA_m2"]), verwacht / q, delta=1e-6)

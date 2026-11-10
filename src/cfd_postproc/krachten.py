@@ -6,16 +6,18 @@ Conventies (simpleFoam, kinematische druk p [m2/s2]):
   randfaces naar buiten het stromingsdomein, dus óp het lichaam: de
   drukkracht op de atleet is +rho * p * Sf.
 - wallShearStress staat eveneens in kinematische eenheden [m2/s2] per
-  wandface. De schuifkracht op de atleet is SHEAR_SIGN * som(wss * |Sf|);
-  SHEAR_SIGN is gecontroleerd op gelijke renderrichting (zie tests en
-  plan-van-aanpak.md, sectie 12).
+  wandface en is de tractie *tegengesteld* aan de naar buiten wijzende
+  wandnormaal. De schuifkracht op de atleet is daarom
+  SHEAR_SIGN * som(wss * |Sf|) met SHEAR_SIGN = -1; gecontroleerd op de
+  voorbeeldcase: de schuifbijdrage aan de luchtweerstand is daarmee
+  positief, zoals fysiek verwacht (plan-van-aanpak.md, sectie 12).
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-SHEAR_SIGN = 1.0
+SHEAR_SIGN = -1.0
 
 
 def face_geometry(mesh, face_ids: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -73,11 +75,13 @@ def frontal_area(mesh, face_ids_per_group: dict[str, np.ndarray], dx: float = 0.
     yall = np.concatenate([g[:, :, 1].ravel() for g in polys.values()])
     zall = np.concatenate([g[:, :, 2].ravel() for g in polys.values()])
     ymin, zmin = yall.min(), zall.min()
-    ny = int(np.ceil((yall.max() - ymin) / dx)) + 2
-    nz = int(np.ceil((zall.max() - zmin) / dx)) + 2
+    ny = int(np.ceil((yall.max() - ymin) / dx)) + 2  # hoogte-as: y
+    nz = int(np.ceil((zall.max() - zmin) / dx)) + 2  # breedte-as: z
 
     def raster(ids: np.ndarray) -> "Image.Image":
-        img = Image.new("1", (ny, nz), 0)
+        # PIL-assen: x = breedte (z), y = hoogte (y); om die verwisseling
+        # niet te maken: Image.new((breedte, hoogte)) = (nz, ny).
+        img = Image.new("1", (nz, ny), 0)
         draw = ImageDraw.Draw(img)
         for group in _face_vertex_coords(mesh, np.asarray(ids)).values():
             py = (group[:, :, 1] - ymin) / dx
@@ -95,9 +99,9 @@ def frontal_area(mesh, face_ids_per_group: dict[str, np.ndarray], dx: float = 0.
         masks[name] = raster(ids)
         result[name] = _mask_area(masks[name], dx)
     # Unie van alle groepen als totale silhouette.
-    tot = Image.new("1", (ny, nz), 0)
+    tot = Image.new("1", (nz, ny), 0)
     for m in masks.values():
-        tot = Image.composite(Image.new("1", (ny, nz), 1), tot, m)
+        tot = Image.composite(Image.new("1", (nz, ny), 1), tot, m)
     result["totaal"] = _mask_area(tot, dx)
     return result
 

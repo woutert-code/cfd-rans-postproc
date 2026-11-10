@@ -47,11 +47,14 @@ class KrachtenTest(unittest.TestCase):
 
     def test_schuifkracht(self):
         wss = of_io.read_patch_values(
-            os.path.join(self.case_dir, "2", "wallShearStress")
+            os.path.join(self.case_dir, "2", "wallShearStress"),
+            patch_names=["pilot"],
         )["pilot"]
         f = krachten.shear_drag(self.mesh, wss, self.pilot_ids, RHO)
         opp = self.n_pilot_faces * DX * DX
-        self.assertAlmostEqual(f[0], RHO * 0.5 * opp, delta=1e-8)
+        # SHEAR_SIGN is -1 (tractie tegengesteld aan de wandnormaal);
+        # gecontroleerd op de echte voorbeeldcase, zie krachten.py.
+        self.assertAlmostEqual(f[0], krachten.SHEAR_SIGN * RHO * 0.5 * opp, delta=1e-8)
         self.assertAlmostEqual(f[1], 0.0, delta=1e-8)
         self.assertAlmostEqual(f[2], 0.0, delta=1e-8)
 
