@@ -274,6 +274,9 @@ Uitzoeklijst voor de bouwagent (nog niet uitgevoerd):
    efficiënter of flexibeler. Opties: dynamische selectie van posities,
    betere handling van mesh-grenzen, geoptimaliseerde triangulatie, of
    alternatieve visualisatiemethodes.
+8. Testen van het huidige script op een andere CFD case (naast Run_Tandem_027)
+   om de robuustheid en generaliseerbaarheid te valideren voordat wordt
+   doorgegaan met versie 2.
 
 Technische controles of bouw zijn bij dit plan nog niet uitgevoerd.
 
