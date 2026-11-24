@@ -33,6 +33,7 @@ from .__main__ import DEFAULT_SLICE_X
 RESULT_COLUMNS = [
     ("patch", "patch"),
     ("weerstand_N", "weerstand [N]"),
+    ("aandeel_van_totaal_pct", "aandeel [%]"),
     ("frontaal_oppervlak_m2", "frontaal oppervlak [m²]"),
     ("CD", "CD"),
     ("CdA_m2", "CdA [m²]"),

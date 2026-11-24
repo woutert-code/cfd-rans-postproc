@@ -67,8 +67,9 @@ class ResultsTableTest(unittest.TestCase):
                 slice_bins=20,
             )
             headers, table = gui.read_results_table(result["results_csv"])
-            # de vier gevraagde waarden uit het startscherm staan erin
+            # de gevraagde waarden uit het startscherm staan erin
             self.assertIn("weerstand [N]", headers)
+            self.assertIn("aandeel [%]", headers)
             self.assertIn("frontaal oppervlak [m²]", headers)
             self.assertIn("CD", headers)
             self.assertIn("CdA [m²]", headers)

@@ -67,6 +67,9 @@ class RouteTest(unittest.TestCase):
         )
         tot = next(r for r in rows if r["patch"] == "totaal")
         self.assertAlmostEqual(float(tot["weerstand_N"]), verwacht, delta=1e-6)
+        # aandeel van het totaal: enige patch pilot = 100%, totaal = 100%
+        self.assertAlmostEqual(float(pilot["aandeel_van_totaal_pct"]), 100.0, places=1)
+        self.assertAlmostEqual(float(tot["aandeel_van_totaal_pct"]), 100.0, places=1)
 
         # Log bevat minimaal start, tijdmap en einde.
         with open(result["log"], encoding="utf-8") as f:

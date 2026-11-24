@@ -6,7 +6,8 @@ Python — zonder ParaView of een OpenFOAM-installatie. Het script leest
 uitsluitend de oplossingsdata van een simulatie en genereert per case:
 
 - `results.csv`: luchtweerstand (N), CdA (m²), frontaal oppervlak (m²) en
-  CD per atleet en totaal;
+  CD per atleet en totaal, plus per atleet het aandeel (%) in de totale
+  luchtweerstand (`aandeel_van_totaal_pct`);
 - een slice-figuur van het stromingsveld met de luchtsnelheid in
   x-richting;
 - een logbestand met fouten en de voortgang van de verwerking.
@@ -46,8 +47,8 @@ rho 1,225 kg/m³, u-ref uit `u_inlet` in `system/Variables`, laatst
 weggeschreven tijdmap, strookdikte 0,02 m) — voor afwijkende waarden gebruik
 je de CLI hieronder. Tijdens de verwerking verschijnt de log live in het
 scherm; na afloop toont het scherm de resultaten uit `results.csv` in een
-tabel: luchtweerstand [N], frontaal oppervlak [m²], CD en CdA [m²] per
-atleet en totaal. `results.csv`, de slice-figuren en het logbestand worden
+tabel: luchtweerstand [N] met aandeel van het totaal [%], frontaal
+oppervlak [m²], CD en CdA [m²] per atleet en totaal. `results.csv`, de slice-figuren en het logbestand worden
 weggeschreven naar `output-custom` in de case-map; de figuren worden niet
 geopend.
 

@@ -107,3 +107,14 @@ startknop, het logvenster en de resultatentabel.
   -1.0,0.0,0.5".
 - Test-pin toegevoegd (`DEFAULT_SLICE_X == "0.0"`); README en DECISIONS.md
   (besluit 004) bijgewerkt.
+
+## Addendum 4: aandeel per atleet in de totale luchtweerstand (besluit 005)
+
+- `results.csv` krijgt als laatste kolom `aandeel_van_totaal_pct` (100% bij
+  de totaalrij); achteraan toegevoegd zodat bestaande parsers niet verschuiven.
+- `case_runner` berekent en logt het aandeel per patch; het startscherm toont
+  een extra kolom "aandeel [%]" direct na "weerstand [N]".
+- Bij Run_Tandem_027 (versie 1.1-waarden): pilot 22,31 N ≈ 57%, stoker
+  16,97 N ≈ 43%, totaal 39,28 N.
+- Tests uitgebreid (aandeel-kolom in results.csv en in de schermtabel);
+  README en DECISIONS.md (besluit 005) bijgewerkt.

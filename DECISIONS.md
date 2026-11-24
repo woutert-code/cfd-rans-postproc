@@ -119,6 +119,25 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
+## Besluit 005: Aandeel van elke atleet in de totale luchtweerstand in de output
+
+**Datum:** 2026-11-24
+**Status:** Actief
+**Beslissing:**
+
+> **`results.csv` bevat als laatste kolom `aandeel_van_totaal_pct`: het percentage van de luchtweerstand van elke atleetpatch t.o.v. het totaal (totaalrij = 100%). Het startscherm toont deze kolom als "aandeel [%]" direct na de weerstand.**
+
+### Motivatie
+
+1. Bij een tandem is direct zichtbaar welk deel van de totale weerstand de pilot (voorste) vs. de stoker (achterste) veroorzaakt.
+2. De kolom is achteraan toegevoegd, zodat bestaande parsers van `results.csv` niet verschuiven.
+
+### Impact
+
+- `case_runner` berekent het aandeel per patch en logt het; `_write_results()` schrijft de kolom; het startscherm toont haar via `RESULT_COLUMNS` in `gui.py`.
+
+---
+
 ## Template voor nieuwe besluiten
 
 ```markdown
@@ -157,3 +176,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | 002 | Interactief startscherm via tkinter | 2026-11-24 | Actief |
 | 003 | Startscherm: alleen essentiële invoervelden | 2026-11-24 | Actief |
 | 004 | Standaard x-slice = 0.0 (net als y) | 2026-11-24 | Actief |
+| 005 | Aandeel per atleet in totale weerstand in output | 2026-11-24 | Actief |

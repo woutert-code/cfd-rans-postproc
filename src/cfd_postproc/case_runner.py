@@ -198,6 +198,22 @@ def _process_inner(
         tot_weerstand, tot_frontaal, tot_cda, tot_cd if tot_cd is not None else float("nan"),
     )
 
+    # Aandeel van elke patch in de totale luchtweerstand (voor de output)
+    for name, res in per_patch.items():
+        res["aandeel_pct"] = (
+            100.0 * res["weerstand"] / tot_weerstand if tot_weerstand else None
+        )
+    if per_patch:
+        log.info(
+            "aandeel van totaal: "
+            + ", ".join(
+                f"{n} {r['aandeel_pct']:.1f}%"
+                if r["aandeel_pct"] is not None
+                else f"{n} n.v.t."
+                for n, r in per_patch.items()
+            )
+        )
+
     # ---- results.csv ---------------------------------------------------------
     csv_path = os.path.join(out_dir, "results.csv")
     _write_results(
@@ -337,6 +353,7 @@ def _write_results(
                 "frontaal_oppervlak_m2",
                 "CD",
                 "CdA_m2",
+                "aandeel_van_totaal_pct",
             ]
         )
         for name, r in per_patch.items():
@@ -349,6 +366,7 @@ def _write_results(
                     f"{r['frontaal']:.6g}",
                     f"{r['cd']:.6g}" if r["cd"] is not None else "",
                     f"{r['cda']:.6g}",
+                    f"{r['aandeel_pct']:.1f}" if r.get("aandeel_pct") is not None else "",
                 ]
             )
         w.writerow(
@@ -360,6 +378,7 @@ def _write_results(
                 f"{tot_frontaal:.6g}",
                 f"{tot_cd:.6g}" if tot_cd is not None else "",
                 f"{tot_cda:.6g}",
+                "100.0" if tot_weerstand else "",
             ]
         )
     log.info("results.csv geschreven met rho=%.4g kg/m3, u_ref=%.4g m/s", rho, u_ref)
