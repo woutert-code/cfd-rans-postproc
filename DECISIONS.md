@@ -138,6 +138,25 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
+## Besluit 006: Commit en push alleen na expliciete toestemming van de gebruiker
+
+**Datum:** 2026-11-24
+**Status:** Actief
+**Beslissing:**
+
+> **Aanpassingen worden pas gecommit en gepusht naar GitHub nadat de gebruiker daar expliciet om vraagt of toestemming voor geeft. Na een wijziging vraagt de agent hiernaar. Dit geldt in plaats van de regel "na iedere versie een commit en een push" in AGENTS.md (die wordt hiermee voor commit/push overrulet).**
+
+### Motivatie
+
+- De gebruiker wil zelf controle over wat wanneer naar GitHub gaat.
+
+### Impact
+
+- Na een code- of documentwijziging staat de wijziging eerst alleen lokaal in de werkboom; de agent vraagt: "commit + push naar main?" Bij 'nee' blijft alles lokaal.
+- De gebruiker kan per change of voor een hele sessie toestemming geven.
+
+---
+
 ## Template voor nieuwe besluiten
 
 ```markdown
@@ -177,3 +196,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | 003 | Startscherm: alleen essentiële invoervelden | 2026-11-24 | Actief |
 | 004 | Standaard x-slice = 0.0 (net als y) | 2026-11-24 | Actief |
 | 005 | Aandeel per atleet in totale weerstand in output | 2026-11-24 | Actief |
+| 006 | Commit/push alleen na expliciete toestemming | 2026-11-24 | Actief |

@@ -129,3 +129,11 @@ Onder de slice-velden staat nu een vaste notitie (`SLICE_NOTE` in `gui.py`):
 
 Getest via pin-test (`output-custom` en `volgende versie` in de notitie);
 README en deze handoff bijgewerkt.
+
+## Addendum 6: werkafspraak commit/push (besluit 006)
+
+Op verzoek van de gebruiker geldt vanaf nu: **de agent vraagt eerst of
+wijzigingen gecommit en gepusht mogen worden naar GitHub** — commit/push
+gebeurt alleen na expliciete toestemming. Vastgelegd als besluit 006 in
+`DECISIONS.md`; dit overrulet de "commit + push na iedere versie"-regel in
+AGENTS.md voor commit/push.
