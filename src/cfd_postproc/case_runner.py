@@ -31,11 +31,15 @@ def process_case(
     frontal_dx: float = 0.002,
     slice_bins: int = 1000,
     slice_default_thickness: float = 0.02,
+    extra_handlers: list | None = None,
 ) -> dict:
     """Verwerk een case; geeft een samenvattingsdict terug.
 
     Fouten worden gelogd in het caselog en opnieuw ger-raisd, zodat de
     aanroeper (CLI) een duidelijke exitstatus kan geven.
+
+    extra_handlers: optionele extra logging-handlers (bijv. voor live
+    meekijken in een GUI); worden na afloop weer gesloten en verwijderd.
     """
     case_dir = os.path.abspath(case_dir)
     case_name = os.path.basename(case_dir.rstrip("\\/"))
@@ -58,6 +62,8 @@ def process_case(
         logging.Formatter("%(asctime)s | %(levelname)-8s | %(message)s")
     )
     log.addHandler(fh)
+    for h in extra_handlers or []:
+        log.addHandler(h)
     log.info("start verwerking case %s", case_name)
 
     try:

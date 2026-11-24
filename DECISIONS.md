@@ -53,6 +53,33 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
+## Besluit 002: Interactief startscherm via tkinter
+
+**Datum:** 2026-11-24
+**Status:** Actief
+**Beslissing:**
+
+> **Het startscherm is een tkinter-GUI (`src/cfd_postproc/gui.py`), gestart via `start.bat` in de repo-root. Geen nieuwe dependencies; de CLI (`py -m src.cfd_postproc`) blijft ongemoeid beschikbaar voor batchgebruik.**
+
+### Toepassing
+
+- `start.bat` → `py -m src.cfd_postproc.gui` (werkt vanaf elke locatie via `cd /d "%~dp0"`).
+- De GUI is een dunne schil boven `case_runner.process_case()`: de verwerking draait in een achtergrondthread en logregels stromen live naar het scherm via `extra_handlers`.
+- Na afloop toont het scherm `results.csv` als tabel (weerstand, frontaal oppervlak, CD, CdA); figuren worden weggeschreven maar niet geopend.
+
+### Motivatie
+
+1. **Geen extra installatie:** tkinter zit standaard in Python op Windows.
+2. **Eenvoudigste start voor één lokale gebruiker:** dubbelklikken op `start.bat`.
+3. **Geen duplicatie:** CLI en GUI delen dezelfde runner.
+
+### Impact
+
+- `case_runner.process_case()` heeft een optionele `extra_handlers`-parameter.
+- GUI-logica (zonder display) getest in `tests/test_gui.py`.
+
+---
+
 ## Template voor nieuwe besluiten
 
 ```markdown
@@ -88,3 +115,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | Nr | Titel | Datum | Status |
 |----|-------|-------|--------|
 | 001 | Gebruik van mean-velden | 2026-11-10 | Actief |
+| 002 | Interactief startscherm via tkinter | 2026-11-24 | Actief |

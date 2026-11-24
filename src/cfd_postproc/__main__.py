@@ -9,6 +9,12 @@ from __future__ import annotations
 import argparse
 import sys
 
+# Standaard slice-posities in x-richting; ook gebruikt door het startscherm (gui.py)
+DEFAULT_SLICE_X = (
+    "-1.0,-0.9,-0.8,-0.7,-0.6,-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,"
+    "0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9"
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -44,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--slice-x",
         type=str,
-        default="-1.0,-0.9,-0.8,-0.7,-0.6,-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9",
+        default=DEFAULT_SLICE_X,
         help="slice-positie(s) in x [m], komma-gescheiden (default: -1.0 tot 1.9 in stappen van 0.1)",
     )
     parser.add_argument(
