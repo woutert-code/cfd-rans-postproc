@@ -118,3 +118,14 @@ startknop, het logvenster en de resultatentabel.
   16,97 N ≈ 43%, totaal 39,28 N.
 - Tests uitgebreid (aandeel-kolom in results.csv en in de schermtabel);
   README en DECISIONS.md (besluit 005) bijgewerkt.
+
+## Addendum 5: notitie over slice-figuren in het startscherm
+
+Onder de slice-velden staat nu een vaste notitie (`SLICE_NOTE` in `gui.py`):
+
+> Slice-figuren worden weggeschreven naar output-custom in de case-map
+> (worden niet geopend). De manier waarop slices worden gemaakt wordt in een
+> volgende versie verbeterd (zie plan-van-aanpak.md §12, punt 7).
+
+Getest via pin-test (`output-custom` en `volgende versie` in de notitie);
+README en deze handoff bijgewerkt.

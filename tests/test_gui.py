@@ -81,6 +81,14 @@ class ResultsTableTest(unittest.TestCase):
             self.assertGreater(cda["pilot"], 0.0)
 
 
+class SliceNoteTest(unittest.TestCase):
+    def test_slice_note_vermeldt_outputcustom_en_verbetering(self):
+        # notitie in het startscherm: figuren naar output-custom + slice-
+        # generatie wordt in een volgende versie verbeterd
+        self.assertIn("output-custom", gui.SLICE_NOTE)
+        self.assertIn("volgende versie", gui.SLICE_NOTE)
+
+
 class PolymeshCheckTest(unittest.TestCase):
     def test_missing_polymesh_files(self):
         with tempfile.TemporaryDirectory() as tmp:

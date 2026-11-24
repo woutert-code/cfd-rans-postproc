@@ -50,7 +50,9 @@ scherm; na afloop toont het scherm de resultaten uit `results.csv` in een
 tabel: luchtweerstand [N] met aandeel van het totaal [%], frontaal
 oppervlak [m²], CD en CdA [m²] per atleet en totaal. `results.csv`, de slice-figuren en het logbestand worden
 weggeschreven naar `output-custom` in de case-map; de figuren worden niet
-geopend.
+geopend. In het startscherm staat onder de slice-velden een notitie hierover,
+inclusief de opmerking dat de manier waarop slices worden gemaakt in een
+volgende versie wordt verbeterd (plan-van-aanpak.md §12, punt 7).
 
 ## Gebruik via de CLI (batch)
 
