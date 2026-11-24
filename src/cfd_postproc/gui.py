@@ -39,6 +39,16 @@ RESULT_COLUMNS = [
 ]
 
 
+# polyMesh-bestanden die aanwezig moeten zijn vóór een run start
+POLYMESH_FILES = ("points", "faces", "owner", "neighbour", "boundary")
+
+
+def missing_polymesh_files(case_dir):
+    """Namen van ontbrekende polyMesh-bestanden (lege lijst = mesh compleet)."""
+    pm = os.path.join(case_dir, "constant", "polyMesh")
+    return [n for n in POLYMESH_FILES if not os.path.isfile(os.path.join(pm, n))]
+
+
 def parse_positions(text, default):
     """Komma-gescheiden float-lijst; lege tekst geeft de default terug."""
     text = (text or "").strip()
@@ -242,11 +252,29 @@ class PostprocApp:
         if not case or not os.path.isdir(case):
             messagebox.showerror("Geen case-map", "Kies eerst een geldige CFD-case map.")
             return
-        if not os.path.isdir(os.path.join(case, "constant", "polyMesh")):
-            messagebox.showerror(
-                "Geen OpenFOAM-case",
-                f"In {case} is geen constant/polyMesh gevonden.",
+
+        # logvenster en resultatentabel leegmaken bij elke nieuwe start
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.configure(state="disabled")
+        for iid in self.tree.get_children():
+            self.tree.delete(iid)
+        self.output_var.set("")
+
+        missing = missing_polymesh_files(case)
+        if missing:
+            msg = (
+                f"In constant/polyMesh van deze case ontbreken: {', '.join(missing)}.\n"
+                "Zet de case-map volledig lokaal beschikbaar (bijv. OneDrive: "
+                "'Altijd op dit apparaat bewaren') of herstel de ontbrekende "
+                "bestanden, en probeer het opnieuw."
             )
+            self._append_log(
+                "FOUT: mesh incompleet — ontbreekt in constant/polyMesh: "
+                + ", ".join(missing),
+                "ERROR",
+            )
+            messagebox.showerror("Mesh incompleet", msg)
             return
         try:
             kwargs = build_kwargs(
@@ -266,9 +294,6 @@ class PostprocApp:
 
         self.start_btn.configure(state="disabled")
         self.status_var.set("Bezig met verwerken...")
-        self.output_var.set("")
-        for iid in self.tree.get_children():
-            self.tree.delete(iid)
 
         qh = _QueueHandler(self._log_queue)
         qh.setFormatter(
@@ -332,6 +357,9 @@ class PostprocApp:
                 "output-custom bestaat al in de case-map.\n"
                 "Vink 'Bestaande output-custom overschrijven' aan om erin te schrijven.",
             )
+        elif isinstance(exc, FileNotFoundError):
+            self._append_log(f"FOUT: {exc}", "ERROR")
+            messagebox.showerror("Bestand ontbreekt", str(exc))
         else:
             self._append_log(f"FOUT: {exc} (details in het caselog)", "ERROR")
 

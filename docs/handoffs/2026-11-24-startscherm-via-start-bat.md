@@ -54,5 +54,30 @@ Een interactief startscherm boven de bestaande runner, plus een
 ## Open punten
 
 - Visueel testen op de echte case Run_Tandem_027 via `start.bat`
-  (scherm’, live log, tabel met pilot/stoker/totaal).
+  (scherm, live log, tabel met pilot/stoker/totaal).
 - Daarna door naar versie 2 (Cp-distributie op geometrie, batchverwerking).
+
+## Addendum: robuustere melding bij ontbrekende mesh-bestanden
+
+Gemeld bij het testen van `start.bat` op Run_Tandem_027: in
+`constant/polyMesh` ontbrak het `faces`-bestand (verdwenen na
+OneDrive-sync; de overige mesh-bestanden zijn wel lokaal). De run stopte
+toen met een kale `FileNotFoundError: [Errno 2] ... faces`.
+
+Aangepast (deze commit):
+
+- `of_io.py`: `_require_file()` — elk lees-pad (mesh, veld, boundary) geeft
+  nu een duidelijke `FileNotFoundError` ("mesh-bestand (faces) ontbreekt:
+  <pad> — controleer of de case-map volledig lokaal beschikbaar is ...");
+  `latest_time()` meldt een ontbrekende case-map als `ValueError`.
+- `gui.py`: pre-check `missing_polymesh_files()` vóór het starten; het scherm
+  meldt welke polyMesh-bestanden ontbreken (getest op Run_Tandem_027:
+  `['faces']`) met hint om de case-map lokaal te zetten. Het logvenster
+  wordt bij elke nieuwe start leeggemaakt (oude FOUT-regels blijven niet
+  hangen). `FileNotFoundError` krijgt in het scherm een eigen melding.
+- tests: +4 (30 totaal groen), o.a. ontbrekend `faces`/`p`-bestand en
+  `missing_polymesh_files`.
+
+Actie voor de gebruiker: herstel `constant/polyMesh/faces` in
+Run_Tandem_027 (OneDrive-versiegeschiedenis/backup, of opnieuw
+reconstrueren vanaf het cluster) — zonder `faces` is de mesh niet te lezen.

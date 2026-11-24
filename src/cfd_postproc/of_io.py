@@ -28,7 +28,17 @@ def body_offset(raw: bytes) -> int:
     return m.end()
 
 
-def _read_first_chunk(path: str, size: int = 65536) -> bytes:
+def _require_file(path: str, wat: str) -> None:
+    """Duidelijke fout als een benodigd bestand ontbreekt (bijv. OneDrive-sync)."""
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"{wat} ontbreekt: {path} — controleer of de case-map volledig "
+            "lokaal beschikbaar is (bijv. OneDrive-sync) en probeer het opnieuw"
+        )
+
+
+def _read_first_chunk(path: str, size: int = 65536, wat: str = "bestand") -> bytes:
+    _require_file(path, wat)
     with open(path, "rb") as f:
         return f.read(size)
 
@@ -53,7 +63,7 @@ def read_internal_field(path: str, dtype=np.float32) -> np.ndarray:
     het resultaat wordt als het schaaltypes toelaat naar ``dtype``
     gegoten (standaard float32) om geheugen te sparen.
     """
-    head = _read_first_chunk(path)
+    head = _read_first_chunk(path, wat="veldbestand")
     off = body_offset(head)
     seg = head[off:]
     m = re.search(
@@ -102,6 +112,7 @@ def read_patch_values(path: str, patch_names: list | None = None) -> dict[str, n
     Uniforme patchwaarden worden als lengte-1-vector teruggegeven; patches
     zonder data (zoals zeroGradient) ontbreken in het resultaat.
     """
+    _require_file(path, "veldbestand")
     with open(path, "rb") as f:
         raw = f.read()
     off = body_offset(raw)
@@ -205,9 +216,11 @@ class FoamMesh:
         return np.arange(p.start_face, p.start_face + p.n_faces, dtype=np.int64)
 
 
-def _read_binary_label_list(path: str, item_type: str, ncomp: int = 1) -> np.ndarray:
+def _read_binary_label_list(
+    path: str, item_type: str, ncomp: int = 1, wat: str = "mesh-bestand"
+) -> np.ndarray:
     """Lees '<count>\\n(<binaire labels of scalars>)' na header."""
-    head = _read_first_chunk(path)
+    head = _read_first_chunk(path, wat=wat)
     off = body_offset(head)
     seg = head[off:]
     skipped = len(seg) - len(seg.lstrip())
@@ -225,6 +238,7 @@ def _read_binary_label_list(path: str, item_type: str, ncomp: int = 1) -> np.nda
 
 def read_boundary(path: str) -> list:
     """Parse de ascii boundary-file (patchnamen, type, nFaces, startFace)."""
+    _require_file(path, "boundary-bestand")
     with open(path, "r", encoding="ascii", errors="replace") as f:
         raw = f.read()
     m = re.search(r"\(\s*(.*?)\s*\)\s*$", raw, re.S)
@@ -248,14 +262,16 @@ def read_mesh(case_dir: str, points_as_float32: bool = True) -> FoamMesh:
     """Lees constant/polyMesh binair: points, faces, owner, neighbour, boundary."""
     pm = os.path.join(case_dir, "constant", "polyMesh")
 
-    pts = _read_binary_label_list(os.path.join(pm, "points"), "scalar", ncomp=3)
+    pts = _read_binary_label_list(
+        os.path.join(pm, "points"), "scalar", ncomp=3, wat="mesh-bestand (points)"
+    )
     points = pts.reshape(-1, 3)
     if points_as_float32:
         points = points.astype(np.float32, copy=False)
 
     # faces: compact lijst '<n_offsets>(' int32, daarna platte vertexlijst.
     fpath = os.path.join(pm, "faces")
-    head = _read_first_chunk(fpath)
+    head = _read_first_chunk(fpath, wat="mesh-bestand (faces)")
     off = body_offset(head)
     seg = head[off:]
     skipped = len(seg) - len(seg.lstrip())
@@ -286,8 +302,12 @@ def read_mesh(case_dir: str, points_as_float32: bool = True) -> FoamMesh:
             f"faces-file inconsistent: laatste offset {offsets[-1]} <> {n_verts} vertices"
         )
 
-    owner = _read_binary_label_list(os.path.join(pm, "owner"), "label")
-    neighbour = _read_binary_label_list(os.path.join(pm, "neighbour"), "label")
+    owner = _read_binary_label_list(
+        os.path.join(pm, "owner"), "label", wat="mesh-bestand (owner)"
+    )
+    neighbour = _read_binary_label_list(
+        os.path.join(pm, "neighbour"), "label", wat="mesh-bestand (neighbour)"
+    )
 
     patches = read_boundary(os.path.join(pm, "boundary"))
     n_faces_mesh = len(offsets) - 1
@@ -308,8 +328,12 @@ def read_mesh(case_dir: str, points_as_float32: bool = True) -> FoamMesh:
 
 def latest_time(case_dir: str) -> str:
     """Hoogste numerieke tijdmap in de case (0, constant en logs genegeerd)."""
+    try:
+        entries = os.listdir(case_dir)
+    except FileNotFoundError:
+        raise ValueError(f"case-map niet gevonden: {case_dir}") from None
     times = []
-    for entry in os.listdir(case_dir):
+    for entry in entries:
         full = os.path.join(case_dir, entry)
         if os.path.isdir(full) and entry.replace(".", "", 1).isdigit():
             times.append((float(entry), entry))

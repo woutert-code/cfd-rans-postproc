@@ -96,6 +96,16 @@ class ResultsTableTest(unittest.TestCase):
             self.assertGreater(cda["pilot"], 0.0)
 
 
+class PolymeshCheckTest(unittest.TestCase):
+    def test_missing_polymesh_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = os.path.join(tmp, "Run_Test_007")
+            StructuredCase(4, 3, 3, 0.1, 0.1, 0.1).write(case_dir, time="2")
+            self.assertEqual(gui.missing_polymesh_files(case_dir), [])
+            os.remove(os.path.join(case_dir, "constant", "polyMesh", "faces"))
+            self.assertEqual(gui.missing_polymesh_files(case_dir), ["faces"])
+
+
 class ExtraHandlersTest(unittest.TestCase):
     def test_extra_handlers_ontvangen_logregels(self):
         records = []

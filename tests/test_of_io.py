@@ -105,5 +105,32 @@ class TestVariablesEnTijd(unittest.TestCase):
         self.assertEqual(of_io.latest_time(self.case_dir), "5")
 
 
+class TestOntbrekendeBestanden(unittest.TestCase):
+    def test_faces_ontbreekt_geeft_diadlare_fout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = os.path.join(tmp, "Run_Test_003")
+            StructuredCase(4, 3, 3, DX, DY, DZ).write(case_dir, time="2")
+            os.remove(os.path.join(case_dir, "constant", "polyMesh", "faces"))
+            with self.assertRaises(FileNotFoundError) as cm:
+                of_io.read_mesh(case_dir)
+            self.assertIn("ontbreekt", str(cm.exception))
+            self.assertIn("faces", str(cm.exception))
+
+    def test_veldbestand_ontbreekt_geeft_diadlare_fout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = os.path.join(tmp, "Run_Test_004")
+            StructuredCase(2, 2, 2, DX, DY, DZ).write(case_dir, time="2")
+            os.remove(os.path.join(case_dir, "2", "p"))
+            with self.assertRaises(FileNotFoundError) as cm:
+                of_io.read_internal_field(os.path.join(case_dir, "2", "p"))
+            self.assertIn("veldbestand ontbreekt", str(cm.exception))
+
+    def test_case_map_ontbreekt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError) as cm:
+                of_io.latest_time(os.path.join(tmp, "bestaat_niet"))
+            self.assertIn("case-map niet gevonden", str(cm.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
