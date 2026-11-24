@@ -37,7 +37,9 @@ binnen de map van de betreffende simulatie.
 
 Dubbelklik `start.bat` in de repo-root (werkt vanaf elke locatie). Er opent
 een startscherm waarin je de CFD-case map kiest ("Bladeren..."), optioneel
-de slice-posities (y en x) aanpast, het vinkje "output-custom
+de slice-posities (y en x) aanpast (invoer: komma-gescheiden posities in
+meter, bijv. `0.0` of `-1.0,0.0,0.5` — zie de hint onder de velden), het
+vinkje "output-custom
 overschrijven" zet en op **Start postprocessing** klikt. De overige
 instellingen staan vast op de standaardwaarden (atleetpatches `pilot,stoker`,
 rho 1,225 kg/m³, u-ref uit `u_inlet` in `system/Variables`, laatst
@@ -62,7 +64,8 @@ Opties (bekijk ze allemaal met `--help`):
 - `--case` — map van de simulatie (vereist);
 - `--time` — te verwerken tijdmap; standaard de laatst weggeschreven tijd;
 - `--body-patches` — wanden van de atleten, standaard `pilot,stoker`;
-- `--slice-y` — positie van de slice in y-richting, standaard 0;
+- `--slice-y` — positie(s) van slice-vlakken in y-richting, komma-gescheiden, standaard 0;
+- `--slice-x` — idem in x-richting, standaard 0;
 - `--rho` en `--u-ref` — luchtdichtheid (standaard 1,225 kg/m³) en
   referred in klassnelheid (standaard uit `system/Variables`: `u_inlet`);
 - `--overwrite` — sta schrijven naar een bestaande `output-custom` toe.

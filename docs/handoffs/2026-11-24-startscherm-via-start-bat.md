@@ -95,3 +95,15 @@ startknop, het logvenster en de resultatentabel.
   tijdmap, strookdikte 0,02 m). Afwijkende waarden: via de CLI.
 - Parse-helpers voor de verwijderde velden verwijderd; tests aangepast.
 - README en DECISIONS.md (besluit 003) bijgewerkt.
+
+## Addendum 3: standaard x-slice = 0.0 + invoer-hint (besluit 004)
+
+- `DEFAULT_SLICE_X` in `__main__.py` is nu `"0.0"` (was 30 posities van
+  -1.0 t/m 1.9): standaard één x-slice op x = 0, net als y. CLI-helptekst
+  aangepast; het startscherm gebruikt dezelfde default en de gebruiker kan
+  het veld aanpassen.
+- Onder de slice-velden in het scherm staat nu een korte hint:
+  "Slice-invoer: komma-gescheiden posities in meter, bijv. 0.0 of
+  -1.0,0.0,0.5".
+- Test-pin toegevoegd (`DEFAULT_SLICE_X == "0.0"`); README en DECISIONS.md
+  (besluit 004) bijgewerkt.

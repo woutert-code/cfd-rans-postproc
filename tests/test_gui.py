@@ -27,6 +27,10 @@ class ParseTest(unittest.TestCase):
 
 
 class BuildKwargsTest(unittest.TestCase):
+    def test_default_slice_x_is_alleen_nul(self):
+        # besluit 004: standaard x-slice = 0.0, net als y
+        self.assertEqual(DEFAULT_SLICE_X, "0.0")
+
     def test_build_kwargs(self):
         kw = gui.build_kwargs("C:\\pad\\naar\\case", "0.0", "", True)
         self.assertEqual(kw["case_dir"], "C:\\pad\\naar\\case")

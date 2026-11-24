@@ -99,6 +99,26 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
+## Besluit 004: Standaard x-slice is 0.0 (net als y)
+
+**Datum:** 2026-11-24
+**Status:** Actief
+**Beslissing:**
+
+> **`DEFAULT_SLICE_X = "0.0"`: standaard wordt één x-slice gemaakt op x = 0, net als de y-slice. Meer posities (komma-gescheiden, bijv. `-1.0,0.0,0.5`) zijn instelbaar via `--slice-x` / het startscherm, met een korte invoer-hint onder de velden.**
+
+### Motivatie
+
+1. Voor een eerste controle zijn weinig slices genoeg; 30 standaardfiguren per case was onnodig veel output.
+2. Duidelijke invoer: de hint onder de slice-velden legt het formaat uit.
+
+### Impact
+
+- `DEFAULT_SLICE_X` in `__main__.py` (gedeeld door CLI en GUI); helptekst aangepast.
+- In het startscherm staat onder slice y/x: "Slice-invoer: komma-gescheiden posities in meter, bijv. 0.0 of -1.0,0.0,0.5".
+
+---
+
 ## Template voor nieuwe besluiten
 
 ```markdown
@@ -136,3 +156,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | 001 | Gebruik van mean-velden | 2026-11-10 | Actief |
 | 002 | Interactief startscherm via tkinter | 2026-11-24 | Actief |
 | 003 | Startscherm: alleen essentiële invoervelden | 2026-11-24 | Actief |
+| 004 | Standaard x-slice = 0.0 (net als y) | 2026-11-24 | Actief |

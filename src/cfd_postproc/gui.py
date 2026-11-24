@@ -136,40 +136,45 @@ class PostprocApp:
         ttk.Entry(frm, textvariable=self.slice_x_var, width=30).grid(
             row=1, column=3, sticky="w", **pad
         )
+        ttk.Label(
+            frm,
+            text="Slice-invoer: komma-gescheiden posities in meter, bijv. 0.0 of -1.0,0.0,0.5",
+            foreground="#666666",
+        ).grid(row=2, column=0, columnspan=4, sticky="w", **pad)
 
         ttk.Checkbutton(
             frm,
             text="Bestaande output-custom overschrijven",
             variable=self.overwrite_var,
-        ).grid(row=2, column=0, columnspan=4, sticky="w", **pad)
+        ).grid(row=3, column=0, columnspan=4, sticky="w", **pad)
 
         self.start_btn = ttk.Button(
             frm, text="Start postprocessing", command=self._start
         )
-        self.start_btn.grid(row=3, column=0, sticky="w", pady=(6, 2))
+        self.start_btn.grid(row=4, column=0, sticky="w", pady=(6, 2))
         ttk.Label(frm, textvariable=self.status_var).grid(
-            row=3, column=1, columnspan=3, sticky="w", **pad
+            row=4, column=1, columnspan=3, sticky="w", **pad
         )
 
-        ttk.Label(frm, text="Log:").grid(row=4, column=0, sticky="nw", **pad)
+        ttk.Label(frm, text="Log:").grid(row=5, column=0, sticky="nw", **pad)
         self.log_text = scrolledtext.ScrolledText(
             frm, height=10, width=90, state="disabled"
         )
-        self.log_text.grid(row=5, column=0, columnspan=4, sticky="nsew", **pad)
+        self.log_text.grid(row=6, column=0, columnspan=4, sticky="nsew", **pad)
         self.log_text.tag_config("WARNING", foreground="#b36b00")
         self.log_text.tag_config("ERROR", foreground="#b00020")
-        frm.rowconfigure(5, weight=1)
+        frm.rowconfigure(6, weight=1)
 
-        ttk.Label(frm, text="Resultaten:").grid(row=6, column=0, sticky="nw", **pad)
+        ttk.Label(frm, text="Resultaten:").grid(row=7, column=0, sticky="nw", **pad)
         keys = [key for key, _ in RESULT_COLUMNS]
         self.tree = ttk.Treeview(frm, columns=keys, show="headings", height=5)
         for key, label in RESULT_COLUMNS:
             self.tree.heading(key, text=label)
             self.tree.column(key, width=90 if key == "patch" else 140, anchor="center")
-        self.tree.grid(row=7, column=0, columnspan=4, sticky="ew", **pad)
+        self.tree.grid(row=8, column=0, columnspan=4, sticky="ew", **pad)
 
         ttk.Label(frm, textvariable=self.output_var, foreground="#444444").grid(
-            row=8, column=0, columnspan=4, sticky="w", **pad
+            row=9, column=0, columnspan=4, sticky="w", **pad
         )
 
     def _browse(self):
