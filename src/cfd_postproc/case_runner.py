@@ -236,7 +236,7 @@ def _process_inner(
     for pos in y_positions:
         log.info("slice: y = %s, strookdikte %s m", pos, slice_thickness)
         png_path = os.path.join(out_dir, f"{case_name}_slice_y{pos:g}.png")
-        slice_mod.make_slice_figure(
+        png = slice_mod.make_slice_figure(
             cell_centers_arr=centroids,
             u_mag=u_mag,
             mesh_points=mesh.points,
@@ -252,8 +252,11 @@ def _process_inner(
             case_name=case_name,
             log=log.info,
         )
-        slice_pngs.append(png_path)
-        log.info("slice-figuur: %s", os.path.basename(png_path))
+        if png is None:
+            log.warning("slice y=%s overgeslagen: geen cellen in het vlak", pos)
+            continue
+        slice_pngs.append(png)
+        log.info("slice-figuur: %s", os.path.basename(png))
     
     # X-slices
     if slice_x is not None:
@@ -265,7 +268,7 @@ def _process_inner(
         for pos in x_positions:
             log.info("slice: x = %s, strookdikte %s m", pos, slice_thickness)
             png_path = os.path.join(out_dir, f"{case_name}_slice_x{pos:g}.png")
-            slice_mod.make_slice_figure(
+            png = slice_mod.make_slice_figure(
                 cell_centers_arr=centroids,
                 u_mag=u_mag,
                 mesh_points=mesh.points,
@@ -281,13 +284,21 @@ def _process_inner(
                 case_name=case_name,
                 log=log.info,
             )
-            slice_pngs.append(png_path)
-            log.info("slice-figuur: %s", os.path.basename(png_path))
+            if png is None:
+                log.warning("slice x=%s overgeslagen: geen cellen in het vlak", pos)
+                continue
+            slice_pngs.append(png)
+            log.info("slice-figuur: %s", os.path.basename(png))
+
+    if not slice_pngs:
+        log.warning(
+            "geen slice-figuren gegenereerd: alle slice-vlakken bevatten geen cellen"
+        )
 
     return {
         "output_dir": out_dir,
         "results_csv": csv_path,
-        "slice_png": slice_pngs if len(slice_pngs) > 1 else slice_pngs[0],
+        "slice_png": slice_pngs[0] if len(slice_pngs) == 1 else slice_pngs,
         "log": logfile,
         "per_patch": per_patch,
         "totaal": {

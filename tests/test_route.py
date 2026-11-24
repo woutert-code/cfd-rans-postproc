@@ -90,6 +90,33 @@ class RouteTest(unittest.TestCase):
         # de bestaande map blijft onaangetast
         self.assertTrue(os.path.isfile(os.path.join(out, "important.txt")))
 
+    def test_slice_buiten_mesh_wordt_overgeslagen(self):
+        case_dir = self.make_case("Run_Test_004d")
+        result = case_runner.process_case(
+            case_dir,
+            body_patches=("pilot",),
+            u_ref=U_REF,
+            slice_y=0.05,
+            slice_x=[99.0, 0.2],
+            slice_thickness=0.2,
+            slice_bins=20,
+        )
+        # de lege slice x=99 is overgeslagen, de slice x=0.2 is aangemaakt
+        pngs = result["slice_png"]
+        if isinstance(pngs, str):
+            pngs = [pngs]
+        namen = [os.path.basename(p) for p in pngs]
+        self.assertIn("Run_Test_004d_slice_y0.05.png", namen)
+        self.assertIn("Run_Test_004d_slice_x0.2.png", namen)
+        self.assertNotIn("Run_Test_004d_slice_x99.png", namen)
+        self.assertFalse(
+            os.path.exists(os.path.join(result["output_dir"],
+                                        "Run_Test_004d_slice_x99.png"))
+        )
+        with open(result["log"], encoding="utf-8") as f:
+            logtekst = f.read()
+        self.assertIn("overgeslagen", logtekst)
+
     def test_cli(self):
         case_dir = self.make_case("Run_Test_004c")
         rc = main(["--case", case_dir, "--body-patches", "pilot",

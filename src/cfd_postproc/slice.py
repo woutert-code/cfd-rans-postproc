@@ -131,18 +131,25 @@ def make_slice_figure(
         log: optionele logging functie
         
     Returns:
-        out_png path
+        out_png path, of None als het slice-vlak geen cellen bevat
+        (de aanroeper slaat de slice dan over met een warning)
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    
+
     ai = AXIS_INDEX[axis]
-    
+
     # Selecteer cellen in de slice
     mask = np.abs(cell_centers_arr[:, ai] - pos) <= tol
     if not mask.any():
-        raise ValueError(f"geen cellen in het slice-vlak {axis}={pos} (tolerantie {tol})")
+        if log is not None:
+            log(
+                "WARNING: geen cellen in het slice-vlak %s=%s (tolerantie %s); "
+                "slice wordt overgeslagen",
+                axis, pos, tol,
+            )
+        return None
     
     if log is not None:
         log("slice: %d cellen geselecteerd, u bereik [%.3f, %.3f]", 
