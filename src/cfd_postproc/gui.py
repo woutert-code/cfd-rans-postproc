@@ -57,45 +57,20 @@ def parse_positions(text, default):
     return [float(s.strip()) for s in text.split(",") if s.strip()]
 
 
-def parse_optional_float(text):
-    """Float, of None bij lege tekst."""
-    text = (text or "").strip()
-    return float(text) if text else None
+def build_kwargs(case_dir, slice_y_text, slice_x_text, overwrite):
+    """Zet de invoervelden van het scherm om naar process_case-argumenten.
 
-
-def parse_optional_str(text):
-    """String, of None bij lege tekst."""
-    text = (text or "").strip()
-    return text or None
-
-
-def build_kwargs(
-    case_dir,
-    body_patches_text,
-    rho_text,
-    u_ref_text,
-    time_text,
-    slice_y_text,
-    slice_x_text,
-    slice_thickness_text,
-    overwrite,
-):
-    """Zet de invoervelden van het scherm om naar process_case-argumenten."""
-    body = tuple(s.strip() for s in (body_patches_text or "").split(",") if s.strip())
-    if not body:
-        raise ValueError("vul minimaal één atleetpatch in (bijv. pilot,stoker)")
-    rho_text = (rho_text or "").strip()
+    Alleen de essentiële velden uit het scherm; de overige parameters
+    (atleetpatches, rho, u-ref, tijdmap, strookdikte) vallen terug op de
+    standaardwaarden van process_case (u-ref = u_inlet uit system/Variables,
+    tijdmap = laatst weggeschreven). Afwijkende waarden gaan via de CLI.
+    """
     return {
         "case_dir": case_dir,
-        "time_dir": parse_optional_str(time_text),
-        "body_patches": body,
-        "rho": float(rho_text) if rho_text else 1.225,
-        "u_ref": parse_optional_float(u_ref_text),
         "slice_y": parse_positions(slice_y_text, [0.0]),
         "slice_x": parse_positions(
             slice_x_text, [float(s) for s in DEFAULT_SLICE_X.split(",")]
         ),
-        "slice_thickness": parse_optional_float(slice_thickness_text),
         "overwrite": bool(overwrite),
     }
 
@@ -128,13 +103,8 @@ class PostprocApp:
         root.minsize(780, 580)
 
         self.case_var = tk.StringVar()
-        self.patches_var = tk.StringVar(value="pilot,stoker")
-        self.rho_var = tk.StringVar(value="1.225")
-        self.u_ref_var = tk.StringVar()
-        self.time_var = tk.StringVar()
         self.slice_y_var = tk.StringVar(value="0.0")
         self.slice_x_var = tk.StringVar(value=DEFAULT_SLICE_X)
-        self.thickness_var = tk.StringVar()
         self.overwrite_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Kies een CFD-case map en klik Start.")
         self.output_var = tk.StringVar(value="")
@@ -158,81 +128,48 @@ class PostprocApp:
             row=0, column=2, **pad
         )
 
-        ttk.Label(frm, text="Atleetpatches:").grid(row=1, column=0, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.patches_var, width=20).grid(
+        ttk.Label(frm, text="Slice y [m]:").grid(row=1, column=0, sticky="w", **pad)
+        ttk.Entry(frm, textvariable=self.slice_y_var, width=20).grid(
             row=1, column=1, sticky="w", **pad
         )
-        ttk.Label(frm, text="rho [kg/m³]:").grid(row=1, column=2, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.rho_var, width=8).grid(
-            row=1, column=3, sticky="w", **pad
-        )
-
-        ttk.Label(frm, text="u-ref [m/s]:").grid(row=2, column=0, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.u_ref_var, width=20).grid(
-            row=2, column=1, sticky="w", **pad
-        )
-        ttk.Label(frm, text="(leeg = u_inlet uit system/Variables)").grid(
-            row=2, column=2, columnspan=2, sticky="w", **pad
-        )
-
-        ttk.Label(frm, text="Tijdmap:").grid(row=3, column=0, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.time_var, width=20).grid(
-            row=3, column=1, sticky="w", **pad
-        )
-        ttk.Label(frm, text="(leeg = laatst weggeschreven)").grid(
-            row=3, column=2, columnspan=2, sticky="w", **pad
-        )
-
-        ttk.Label(frm, text="Slice y [m]:").grid(row=4, column=0, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.slice_y_var, width=20).grid(
-            row=4, column=1, sticky="w", **pad
-        )
-        ttk.Label(frm, text="Slice x [m]:").grid(row=4, column=2, sticky="w", **pad)
+        ttk.Label(frm, text="Slice x [m]:").grid(row=1, column=2, sticky="w", **pad)
         ttk.Entry(frm, textvariable=self.slice_x_var, width=30).grid(
-            row=4, column=3, sticky="w", **pad
-        )
-
-        ttk.Label(frm, text="Strookdikte [m]:").grid(row=5, column=0, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.thickness_var, width=20).grid(
-            row=5, column=1, sticky="w", **pad
-        )
-        ttk.Label(frm, text="(leeg = 0.02)").grid(
-            row=5, column=2, columnspan=2, sticky="w", **pad
+            row=1, column=3, sticky="w", **pad
         )
 
         ttk.Checkbutton(
             frm,
             text="Bestaande output-custom overschrijven",
             variable=self.overwrite_var,
-        ).grid(row=6, column=0, columnspan=4, sticky="w", **pad)
+        ).grid(row=2, column=0, columnspan=4, sticky="w", **pad)
 
         self.start_btn = ttk.Button(
             frm, text="Start postprocessing", command=self._start
         )
-        self.start_btn.grid(row=7, column=0, sticky="w", pady=(6, 2))
+        self.start_btn.grid(row=3, column=0, sticky="w", pady=(6, 2))
         ttk.Label(frm, textvariable=self.status_var).grid(
-            row=7, column=1, columnspan=3, sticky="w", **pad
+            row=3, column=1, columnspan=3, sticky="w", **pad
         )
 
-        ttk.Label(frm, text="Log:").grid(row=8, column=0, sticky="nw", **pad)
+        ttk.Label(frm, text="Log:").grid(row=4, column=0, sticky="nw", **pad)
         self.log_text = scrolledtext.ScrolledText(
             frm, height=10, width=90, state="disabled"
         )
-        self.log_text.grid(row=9, column=0, columnspan=4, sticky="nsew", **pad)
+        self.log_text.grid(row=5, column=0, columnspan=4, sticky="nsew", **pad)
         self.log_text.tag_config("WARNING", foreground="#b36b00")
         self.log_text.tag_config("ERROR", foreground="#b00020")
-        frm.rowconfigure(9, weight=1)
+        frm.rowconfigure(5, weight=1)
 
-        ttk.Label(frm, text="Resultaten:").grid(row=10, column=0, sticky="nw", **pad)
+        ttk.Label(frm, text="Resultaten:").grid(row=6, column=0, sticky="nw", **pad)
         keys = [key for key, _ in RESULT_COLUMNS]
         self.tree = ttk.Treeview(frm, columns=keys, show="headings", height=5)
         for key, label in RESULT_COLUMNS:
             self.tree.heading(key, text=label)
             self.tree.column(key, width=90 if key == "patch" else 140, anchor="center")
-        self.tree.grid(row=11, column=0, columnspan=4, sticky="ew", **pad)
+        self.tree.grid(row=7, column=0, columnspan=4, sticky="ew", **pad)
 
         ttk.Label(frm, textvariable=self.output_var, foreground="#444444").grid(
-            row=12, column=0, columnspan=4, sticky="w", **pad
+            row=8, column=0, columnspan=4, sticky="w", **pad
         )
 
     def _browse(self):
@@ -279,13 +216,8 @@ class PostprocApp:
         try:
             kwargs = build_kwargs(
                 case,
-                self.patches_var.get(),
-                self.rho_var.get(),
-                self.u_ref_var.get(),
-                self.time_var.get(),
                 self.slice_y_var.get(),
                 self.slice_x_var.get(),
-                self.thickness_var.get(),
                 self.overwrite_var.get(),
             )
         except ValueError as exc:

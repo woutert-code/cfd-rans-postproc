@@ -25,47 +25,27 @@ class ParseTest(unittest.TestCase):
     def test_parse_positions_lijst(self):
         self.assertEqual(gui.parse_positions("0.0, 0.5 , -1", [0.0]), [0.0, 0.5, -1.0])
 
-    def test_parse_optional_float(self):
-        self.assertIsNone(gui.parse_optional_float(""))
-        self.assertIsNone(gui.parse_optional_float("  "))
-        self.assertEqual(gui.parse_optional_float("16"), 16.0)
-
-    def test_parse_optional_str(self):
-        self.assertIsNone(gui.parse_optional_str(""))
-        self.assertEqual(gui.parse_optional_str(" 1600 "), "1600")
-
 
 class BuildKwargsTest(unittest.TestCase):
     def test_build_kwargs(self):
-        kw = gui.build_kwargs(
-            "C:\\pad\\naar\\case", "pilot, stoker", "1.225", "", "", "0.0", "", "0.05", True
-        )
+        kw = gui.build_kwargs("C:\\pad\\naar\\case", "0.0", "", True)
         self.assertEqual(kw["case_dir"], "C:\\pad\\naar\\case")
-        self.assertEqual(kw["body_patches"], ("pilot", "stoker"))
-        self.assertEqual(kw["rho"], 1.225)
-        self.assertIsNone(kw["u_ref"])
-        self.assertIsNone(kw["time_dir"])
         self.assertEqual(kw["slice_y"], [0.0])
         # leeg slice-x veld -> standaard uit de CLI (DEFAULT_SLICE_X)
         self.assertEqual(
             kw["slice_x"], [float(s) for s in DEFAULT_SLICE_X.split(",")]
         )
-        self.assertEqual(kw["slice_thickness"], 0.05)
         self.assertTrue(kw["overwrite"])
+        # de verwijderde velden (patches, rho, u-ref, tijdmap, strookdikte)
+        # worden niet doorgegeven: process_case gebruikt zijn defaults
+        for sleutel in ("body_patches", "rho", "u_ref", "time_dir", "slice_thickness"):
+            self.assertNotIn(sleutel, kw)
 
     def test_build_kwargs_slice_x_ingevuld(self):
-        kw = gui.build_kwargs("x", "pilot", "", "16", "1600", "0,0.5", "-1,2", "", False)
-        self.assertEqual(kw["rho"], 1.225)  # leeg rho -> default
-        self.assertEqual(kw["u_ref"], 16.0)
-        self.assertEqual(kw["time_dir"], "1600")
+        kw = gui.build_kwargs("x", "0,0.5", "-1,2", False)
         self.assertEqual(kw["slice_y"], [0.0, 0.5])
         self.assertEqual(kw["slice_x"], [-1.0, 2.0])
-        self.assertIsNone(kw["slice_thickness"])
         self.assertFalse(kw["overwrite"])
-
-    def test_build_kwargs_zonder_patches_is_fout(self):
-        with self.assertRaises(ValueError):
-            gui.build_kwargs("x", " , ", "1.225", "", "", "0", "0", "", False)
 
 
 class ResultsTableTest(unittest.TestCase):

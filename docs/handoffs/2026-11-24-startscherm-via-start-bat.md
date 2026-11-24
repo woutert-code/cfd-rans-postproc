@@ -81,3 +81,17 @@ Aangepast (deze commit):
 Actie voor de gebruiker: herstel `constant/polyMesh/faces` in
 Run_Tandem_027 (OneDrive-versiegeschiedenis/backup, of opnieuw
 reconstrueren vanaf het cluster) — zonder `faces` is de mesh niet te lezen.
+
+## Addendum 2: startscherm vereenvoudigd (besluit 003)
+
+Op verzoek van de gebruiker zijn de velden **strookdikte, u-ref,
+atleetpatches, rho en tijdmap** uit het startscherm verwijderd. Het scherm
+bevat nu alleen: case-map, slice y, slice x, het vinkje overschrijven, de
+startknop, het logvenster en de resultatentabel.
+
+- `build_kwargs()` geeft alleen nog de schermvelden door; de overige
+  parameters vallen terug op de defaults van `process_case()` (patches
+  `pilot,stoker`, rho 1,225, u-ref = `u_inlet` uit `system/Variables`, laatste
+  tijdmap, strookdikte 0,02 m). Afwijkende waarden: via de CLI.
+- Parse-helpers voor de verwijderde velden verwijderd; tests aangepast.
+- README en DECISIONS.md (besluit 003) bijgewerkt.

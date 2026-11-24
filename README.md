@@ -36,14 +36,18 @@ binnen de map van de betreffende simulatie.
 ## Starten via start.bat (interactief)
 
 Dubbelklik `start.bat` in de repo-root (werkt vanaf elke locatie). Er opent
-een startscherm waarin je de CFD-case map kiest ("Bladeren..."), de opties
-invoert (atleetpatches, rho, u-ref, tijdmap, slice-posities, overschrijven)
-en op **Start postprocessing** klikt. Tijdens de verwerking verschijnt de
-log live in het scherm; na afloop toont het scherm de resultaten uit
-`results.csv` in een tabel: luchtweerstand [N], frontaal oppervlak [m²], CD
-en CdA [m²] per atleet en totaal. `results.csv`, de slice-figuren en het
-logbestand worden weggeschreven naar `output-custom` in de case-map; de
-figuren worden niet geopend.
+een startscherm waarin je de CFD-case map kiest ("Bladeren..."), optioneel
+de slice-posities (y en x) aanpast, het vinkje "output-custom
+overschrijven" zet en op **Start postprocessing** klikt. De overige
+instellingen staan vast op de standaardwaarden (atleetpatches `pilot,stoker`,
+rho 1,225 kg/m³, u-ref uit `u_inlet` in `system/Variables`, laatst
+weggeschreven tijdmap, strookdikte 0,02 m) — voor afwijkende waarden gebruik
+je de CLI hieronder. Tijdens de verwerking verschijnt de log live in het
+scherm; na afloop toont het scherm de resultaten uit `results.csv` in een
+tabel: luchtweerstand [N], frontaal oppervlak [m²], CD en CdA [m²] per
+atleet en totaal. `results.csv`, de slice-figuren en het logbestand worden
+weggeschreven naar `output-custom` in de case-map; de figuren worden niet
+geopend.
 
 ## Gebruik via de CLI (batch)
 

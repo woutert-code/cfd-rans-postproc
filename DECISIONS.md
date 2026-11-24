@@ -80,6 +80,25 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
+## Besluit 003: Startscherm bevat alleen de essentiële invoervelden
+
+**Datum:** 2026-11-24
+**Status:** Actief
+**Beslissing:**
+
+> **Het startscherm (`gui.py`) bevat alleen: case-map, slice y, slice x en het vinkje "output-custom overschrijven". De overige parameters (atleetpatches, rho, u-ref, tijdmap, strookdikte) krijgen de standaardwaarden van `process_case()`; afwijkende waarden gaan via de CLI.**
+
+### Motivatie
+
+1. Minder invoervelden = minder kans op fouten bij de primaire use-case (tandem-cases met `pilot,stoker`).
+2. De defaults leven op één plek (`process_case`), waardoor CLI en GUI consistent blijven.
+
+### Impact
+
+- `build_kwargs()` in `gui.py` geeft alleen de schermvelden door; de parse-helpers voor de verwijderde velden zijn meegeschoond.
+
+---
+
 ## Template voor nieuwe besluiten
 
 ```markdown
@@ -116,3 +135,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 |----|-------|-------|--------|
 | 001 | Gebruik van mean-velden | 2026-11-10 | Actief |
 | 002 | Interactief startscherm via tkinter | 2026-11-24 | Actief |
+| 003 | Startscherm: alleen essentiële invoervelden | 2026-11-24 | Actief |
