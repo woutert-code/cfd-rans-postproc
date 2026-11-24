@@ -54,6 +54,15 @@ geopend. In het startscherm staat onder de slice-velden een notitie hierover,
 inclusief de opmerking dat de manier waarop slices worden gemaakt in een
 volgende versie wordt verbeterd (plan-van-aanpak.md §12, punt 7).
 
+Met **Geometrie tonen** opent een apart venster met de solid-geometrie van
+de atleetpatches (`pilot,stoker`): vooraanzicht, zijaanzicht en bovenaanzicht
+(2D, gerasteriseerd over alle faces, met de afmetingen uit de bounding box —
+lengte × breedte × hoogte) plus een 3D-figuur die met de muis draaibaar is
+(scroll = zoomen). Voor de 3D wordt het oppervlak cel-geïdecimeerd (één face
+per oppervlakte-cel, ≤ 20.000 polygonen) en worden de polygonen licht
+opgeblazen rond hun zwaartepunt, zodat het solid is zonder gaten bij grote
+meshes (zie `src/cfd_postproc/geometrie.py`).
+
 ## Gebruik via de CLI (batch)
 
 Vanuit de repositorymap:

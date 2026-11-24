@@ -157,6 +157,26 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
+## Besluit 007: Geometrie-visualisatie in het startscherm (2D-views + draaibare 3D)
+
+**Datum:** 2026-11-24
+**Status:** Actief
+**Beslissing:**
+
+> **Via "Geometrie tonen" in het startscherm is de geometrie van de atleetpatches (`pilot,stoker`) te bekijken als solid: vooraanzicht, zijaanzicht en bovenaanzicht (2D, PIL-raster over alle faces, met afmetingen uit de bounding box) plus een 3D-figuur die in het scherm met de muis draaibaar is. Implementatie in `geometrie.py` met matplotlib-`Figure` + `FigureCanvasTkAgg` — geen nieuwe dependencies. Voor de 3D: cel-decimatie (één face per oppervlakte-cel, ≤ 20.000 polygonen — meer is te traag voor interactief draaien) + inflatie van elk polygon rond zijn zwaartepunt met factor celgrootte/face-diameter, zodat het solid is zonder gaten.**
+
+### Motivatie
+
+1. De gebruiker wil de atleetgeometrie (pilot + stoker) visueel kunnen begruiken zonder ParaView — dit is een eerste stap naar de geometriefiguur met Cp-distributie uit versie 2 (plan §9).
+2. Alleen estándar-bibliotheken (numpy/matplotlib/tkinter), consistent met besluit 002.
+
+### Impact
+
+- Nieuw module `src/cfd_postproc/geometrie.py`; GUI-knop "Geometrie tonen" in `gui.py` (mesh laden in achtergrondthread, viewer in een `Toplevel` met `ttk.Notebook`).
+- Tests in `tests/test_geometrie.py` (display-vrij).
+
+---
+
 ## Template voor nieuwe besluiten
 
 ```markdown
@@ -197,3 +217,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | 004 | Standaard x-slice = 0.0 (net als y) | 2026-11-24 | Actief |
 | 005 | Aandeel per atleet in totale weerstand in output | 2026-11-24 | Actief |
 | 006 | Commit/push alleen na expliciete toestemming | 2026-11-24 | Actief |
+| 007 | Geometrie in startscherm: 2D-views + draaibare 3D | 2026-11-24 | Actief |

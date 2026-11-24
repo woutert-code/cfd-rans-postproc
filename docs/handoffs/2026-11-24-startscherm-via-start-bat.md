@@ -137,3 +137,63 @@ wijzigingen gecommit en gepusht mogen worden naar GitHub** — commit/push
 gebeurt alleen na expliciete toestemming. Vastgelegd als besluit 006 in
 `DECISIONS.md`; dit overrulet de "commit + push na iedere versie"-regel in
 AGENTS.md voor commit/push.
+
+## Addendum 7: geometrie-visualisatie in het startscherm (besluit 007)
+
+- Nieuw `src/cfd_postproc/geometrie.py`: body-face-selectie, bounding box
+  (vectorized), afmetingen-tekst, subsample (cap) en matplotlib-`Figure`s
+  voor front/side/top + 3D (`Poly3DCollection`, draaibaar in de GUI).
+- `gui.py`: knop **"Geometrie tonen**" — laadt de mesh in een
+  achtergrondthread en opent een `Toplevel` met een `ttk.Notebook`:
+  Vooraanzicht / Zijaanzicht / Bovenaanzicht (2D, met afmetingen in de titel
+  en bovenin het venster) + tab "3D (draaien)" (sleep = draaien, scroll = zoom).
+- Bij Run_Tandem_027: pilot 465.282 + stoker 437.913 faces → subsample naar
+  ≤ 50.000 (2D) / ≤ 15.000 (3D) polygonen; cap is aanpasbaar in `geometrie.py`.
+- Tests: `tests/test_geometrie.py` (10 tests, display-vrij; 39 totaal groen).
+  Smoke-test: geometrie-venster opent met 4 tabs.
+- README en DECISIONS.md (besluit 007) bijgewerkt. Eerste stap naar de
+  Cp-geometriefiguur uit versie 2 (plan §9).
+
+## Addendum 8: geometrie solid in plaats van point cloud
+
+Eerste versie toonde bij grote meshes een point cloud (random subsample liet
+gaten vallen). Nu:
+
+- **2D-aanzichten**: `geometrie.raster_view()` rasteriseert de projectie van
+  **alle** body-faces met PIL (zelfde patroon als `krachten.frontal_area`)
+  → gevulde solid silhouette; `make_view_figure()` toont het masker via
+  `imshow` (masked, achtergrond transparant).
+- **3D**: `geometrie.decimate_surface()` kiest per oppervlakte-cel (grootte h,
+  verdubbeld tot ≤ `DEFAULT_MAX_POLYS_3D` = 15.000) één face — gelijkmatig
+  verdeeld, dus geen gaten; `make_3d_figure()` gebruikt edgecolor = facecolor
+  zodat naden onzichtbaar zijn. Bij Run_Tandem_027: 903.195 body-faces →
+  3D toont ≤ 15.000 gelijkmatig verdeelde polygonen, nog steeds draaibaar.
+- Guard tegen singuliere as bij plat vlak (bmin == bmax) in `make_3d_figure`.
+- Tests: raster (solid fill + oppervlak ≈ 0.04 m² op fixture), decimatie
+  (limiet + subset), figures; 42 tests groen. Smoke: 4 tabs, renders ok.
+
+## Addendum 9: 3D solid in plaats van point cloud (oorzaak + fix)
+
+**Oorzaak point cloud:** bij Run_Tandem_027 hebben pilot+stoker ~903k faces
+(losse face ~2 mm), maar voor interactief draaien moet het aantal polygonen
+laag blijven (benchmark matplotlib Poly3DCollection: 15k ≈ 0,55 s/redraw,
+60k ≈ 2,2 s/redraw). Cel-decimatie naar 15k–20k cellen (cel ~2 cm) hield
+daarom maar ~2% van de faces over, met cm-grote gaten ertussen → point cloud.
+
+**Fix:** na cel-decimatie (`decimate_surface`, nu retour (ids, h)) worden de
+gekozen polygonen opgeblazen rond hun zwaartepunt met factor
+`inflation_factor = h / gemiddelde face-diameter` (afgekapt op ≤ 6)
+(`inflate_polygons`). Verificatie op synthetische bol (20k quads → 715
+ge decimeerd, s=5,7): dekking zonder inflatie 17% van volledig, mét inflatie
+102% → solid. `make_3d_figure` gebruikt shade=False (sneller bij draaien).
+
+- GUI-label in het geometrie-venster toont nu: aantal 3D-polygonen en de
+  inflatie-factor.
+- Tests: +2 (inflatie-factor, inflate rond zwaartepunt); 44 tests groen.
+
+**Open punt voor een volgende versie:** de 3D-weergave is nu solid via
+cel-decimatie + inflatie van polygonen, maar dat is nog een benadering
+(inflatie fattent de buitenste contour iets op). In een volgende versie de
+3D-weergave nog verbeteren — bijv. echte mesh-simplificatie in plaats van
+inflatie, of een snellere/betere 3D-renderer — zie ook plan-van-aanpak.md §9
+(versie 2, geometriefiguur).

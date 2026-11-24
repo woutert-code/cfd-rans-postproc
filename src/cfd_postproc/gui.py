@@ -26,8 +26,11 @@ try:
 except ImportError:  # tkinter zit standaard in Python op Windows
     tk = None
 
-from . import case_runner
+from . import case_runner, geometrie
 from .__main__ import DEFAULT_SLICE_X
+
+# atleetpatches waarvoor de geometrie wordt getoond (zelfde default als process_case)
+BODY_PATCHES = ("pilot", "stoker")
 
 # Kolommen van results.csv die in het scherm getoond worden: (csv-sleutel, titel)
 RESULT_COLUMNS = [
@@ -119,6 +122,7 @@ class PostprocApp:
         self.output_var = tk.StringVar(value="")
 
         self._log_queue = queue.Queue()
+        self._geo_queue = queue.Queue()
         self._build_widgets()
 
     def _build_widgets(self):
@@ -167,8 +171,12 @@ class PostprocApp:
             frm, text="Start postprocessing", command=self._start
         )
         self.start_btn.grid(row=5, column=0, sticky="w", pady=(6, 2))
+        self.geo_btn = ttk.Button(
+            frm, text="Geometrie tonen", command=self._show_geometry
+        )
+        self.geo_btn.grid(row=5, column=1, sticky="w", pady=(6, 2))
         ttk.Label(frm, textvariable=self.status_var).grid(
-            row=5, column=1, columnspan=3, sticky="w", **pad
+            row=5, column=2, columnspan=2, sticky="w", **pad
         )
 
         ttk.Label(frm, text="Log:").grid(row=6, column=0, sticky="nw", **pad)
@@ -294,6 +302,110 @@ class PostprocApp:
         self.output_var.set(
             f"Output: {result['output_dir']} — results.csv, {n_slices} "
             "slice-figuur(en) en logbestand weggeschreven (figuren niet geopend)."
+        )
+
+    def _show_geometry(self):
+        """Laad de mesh in een achtergrondthread en open het geometrie-venster."""
+        case = self.case_var.get().strip()
+        if not case or not os.path.isdir(case):
+            messagebox.showerror("Geen case-map", "Kies eerst een geldige CFD-case map.")
+            return
+        missing = missing_polymesh_files(case)
+        if missing:
+            messagebox.showerror(
+                "Mesh incompleet",
+                f"In constant/polyMesh ontbreken: {', '.join(missing)}.",
+            )
+            return
+
+        self.geo_btn.configure(state="disabled")
+        self.status_var.set("Mesh laden voor geometrie...")
+        from . import of_io
+
+        def worker():
+            try:
+                mesh = of_io.read_mesh(case)
+                ids = geometrie.body_face_ids(mesh, BODY_PATCHES)
+                bmin, bmax = geometrie.bounding_box(mesh, ids)
+                # 2D: solid silhouette via PIL-raster over alle faces
+                views = {
+                    v: geometrie.raster_view(mesh, ids, v)
+                    for v in ("front", "side", "top")
+                }
+                # 3D: cel-decimatie + inflatie van de polygonen (solid, geen gaten)
+                ids3d, h = geometrie.decimate_surface(
+                    mesh, ids, geometrie.DEFAULT_MAX_POLYS_3D
+                )
+                s = geometrie.inflation_factor(mesh, ids, h)
+                polys3d = geometrie.inflate_polygons(
+                    geometrie.polygons_of(mesh, ids3d), s
+                )
+                self._geo_queue.put(
+                    ("OK", (views, polys3d, bmin, bmax, len(ids), len(ids3d), s))
+                )
+            except Exception as exc:  # wordt in het scherm gemeld
+                self._geo_queue.put(("ERR", exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+        self.root.after(100, self._poll_geo)
+
+    def _poll_geo(self):
+        try:
+            status, payload = self._geo_queue.get_nowait()
+        except queue.Empty:
+            self.root.after(100, self._poll_geo)
+            return
+        self.geo_btn.configure(state="normal")
+        if status == "ERR":
+            self.status_var.set("Geometrie laden mislukt.")
+            self._append_log(f"FOUT: geometrie laden: {payload}", "ERROR")
+            messagebox.showerror("Geometrie laden mislukt", str(payload))
+            return
+        views, polys3d, bmin, bmax, n_total, n_3d, s = payload
+        self.status_var.set(f"Geometrie geladen ({n_total} body-faces).")
+        self._open_geometry_window(views, polys3d, bmin, bmax, n_total, n_3d, s)
+
+    def _open_geometry_window(self, views, polys3d, bmin, bmax, n_total, n_3d, s):
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        case = self.case_var.get().strip().rstrip("\\/")
+        win = tk.Toplevel(self.root)
+        win.title(f"Geometrie — {os.path.basename(case)}")
+        win.minsize(720, 580)
+
+        ttk.Label(
+            win,
+            text=(
+                f"Atleetpatches {BODY_PATCHES} — {geometrie.sizes_text(bmin, bmax)} "
+                f"({n_total} faces; 2D solid via raster; 3D: {n_3d} polygonen, "
+                f"cel-decimatie + inflatie ×{s:.1f} = solid)"
+            ),
+        ).pack(padx=8, pady=(8, 0), anchor="w")
+
+        nb = ttk.Notebook(win)
+        nb.pack(fill="both", expand=True, padx=8, pady=8)
+        for view, naam in (
+            ("front", "Vooraanzicht"),
+            ("side", "Zijaanzicht"),
+            ("top", "Bovenaanzicht"),
+        ):
+            tab = ttk.Frame(nb)
+            nb.add(tab, text=naam)
+            mask, extent = views[view]
+            fig = geometrie.make_view_figure(view, mask, extent)
+            FigureCanvasTkAgg(fig, master=tab).get_tk_widget().pack(
+                fill="both", expand=True
+            )
+
+        tab3d = ttk.Frame(nb)
+        nb.add(tab3d, text="3D (draaien)")
+        ttk.Label(
+            tab3d,
+            text="Sleep met de muis over de figuur om te draaien; scroll om te zoomen.",
+        ).pack(anchor="w", padx=4, pady=2)
+        fig3d = geometrie.make_3d_figure(polys3d, bmin, bmax)
+        FigureCanvasTkAgg(fig3d, master=tab3d).get_tk_widget().pack(
+            fill="both", expand=True
         )
 
     def _on_error(self, exc):
