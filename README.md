@@ -32,7 +32,19 @@ binnen de map van de betreffende simulatie.
 
 ## Vereisten
 
-- Python 3.11+ met `numpy`, `matplotlib` en `pillow`.
+- **Python 3.11+** met **tkinter** (bij de standaardinstallatie van Python op
+  Windows inbegrepen, ook de Microsoft Store-versie);
+- `numpy`, `matplotlib`, `pillow`.
+
+Installeren van de overige packages kan met:
+
+```bash
+python -m pip install numpy matplotlib pillow
+```
+
+Op deze machine is Python geïnstalleerd via de Microsoft Store en is de
+`py`-launcher **niet** beschikbaar: gebruik dus overal `python` in plaats
+van `py`.
 
 ## Starten via start.bat (interactief)
 
@@ -68,7 +80,7 @@ meshes (zie `src/cfd_postproc/geometrie.py`).
 Vanuit de repositorymap:
 
 ```bash
-py -m src.cfd_postproc --case "pad/naar/simulatiemap" [--time 1600]
+python -m src.cfd_postproc --case "pad/naar/simulatiemap" [--time 1600]
 ```
 
 Opties (bekijk ze allemaal met `--help`):
@@ -85,7 +97,7 @@ Opties (bekijk ze allemaal met `--help`):
 ## Controleren
 
 ```bash
-py -m unittest discover -s tests -v
+python -m unittest discover -s tests -v
 ```
 
 De acceptatie van versie 1 wordt bepaald door vergelijking van de
