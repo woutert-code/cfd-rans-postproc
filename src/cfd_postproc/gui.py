@@ -8,7 +8,7 @@ niet geopend.
 
 Starten: dubbelklik start.bat in de repo-root, of:
 
-    py -m src.cfd_postproc.gui
+    python -m src.cfd_postproc.gui
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ import os
 import queue
 import sys
 import threading
+
+import numpy as np
 
 try:
     import tkinter as tk
@@ -123,6 +125,7 @@ class PostprocApp:
 
         self._log_queue = queue.Queue()
         self._geo_queue = queue.Queue()
+        self._geo_cache = {}  # case -> geometrie-payload (zelfde sessie)
         self._build_widgets()
 
     def _build_widgets(self):
@@ -305,25 +308,81 @@ class PostprocApp:
         )
 
     def _show_geometry(self):
-        """Laad de mesh in een achtergrondthread en open het geometrie-venster."""
+        """Laad de geometrie in een achtergrondthread en open het venster.
+
+        Voorkeur: STL's van de atleten (snel, geen polyMesh nodig); anders de
+        body-patches uit de polyMesh (fallback).
+        """
         case = self.case_var.get().strip()
         if not case or not os.path.isdir(case):
             messagebox.showerror("Geen case-map", "Kies eerst een geldige CFD-case map.")
             return
-        missing = missing_polymesh_files(case)
-        if missing:
-            messagebox.showerror(
-                "Mesh incompleet",
-                f"In constant/polyMesh ontbreken: {', '.join(missing)}.",
-            )
+        # zelfde sessie + zelfde case: direct openen uit de cache
+        if case in self._geo_cache:
+            payload = self._geo_cache[case]
+            self.status_var.set("Geometrie uit cache geladen.")
+            self._open_geometry_window(*payload)
             return
+        stl_mode = geometrie.find_stl_dir(case) is not None
+        if not stl_mode:
+            missing = missing_polymesh_files(case)
+            if missing:
+                messagebox.showerror(
+                    "Mesh incompleet",
+                    f"In constant/polyMesh ontbreken: {', '.join(missing)}.",
+                )
+                return
 
         self.geo_btn.configure(state="disabled")
-        self.status_var.set("Mesh laden voor geometrie...")
+        self.status_var.set(
+            "Geometrie laden uit STL..." if stl_mode else "Mesh laden voor geometrie..."
+        )
         from . import of_io
 
         def worker():
             try:
+                tris_map = geometrie.read_body_triangles(case, BODY_PATCHES)
+                if tris_map is not None:
+                    # STL-route: geen polyMesh nodig
+                    all_tris = np.concatenate(list(tris_map.values()))
+                    bmin, bmax = geometrie.bounding_box_triangles(all_tris)
+                    views = {
+                        v: geometrie.raster_view_triangles(all_tris, v)
+                        for v in ("front", "side", "top")
+                    }
+                    sel, h, s = geometrie.decimate_triangles(
+                        all_tris, geometrie.DEFAULT_MAX_POLYS_3D
+                    )
+                    polys3d = geometrie.inflate_polygons(list(sel), s)
+                    self._geo_queue.put(
+                        (
+                            "OK",
+                            (
+                                views, polys3d, bmin, bmax, len(all_tris),
+                                len(sel), s, "stl",
+                            ),
+                        )
+                    )
+                    return
+                if stl_mode:
+                    # STL's gevonden, maar niet voor alle patches bruikbaar
+                    self._geo_queue.put(
+                        (
+                            "WARN",
+                            f"STL-geometrie niet bruikbaar voor patches "
+                            f"{BODY_PATCHES}; val terug op de polyMesh "
+                            f"(kan lang duren bij grote cases).",
+                        )
+                    )
+                else:
+                    self._geo_queue.put(
+                        (
+                            "WARN",
+                            "Geen STL-geometrie gevonden (constant/triSurface "
+                            "of bijbehorende Mesh_-map); polyMesh wordt "
+                            "gelezen (kan lang duren bij grote cases).",
+                        )
+                    )
                 mesh = of_io.read_mesh(case)
                 ids = geometrie.body_face_ids(mesh, BODY_PATCHES)
                 bmin, bmax = geometrie.bounding_box(mesh, ids)
@@ -341,7 +400,13 @@ class PostprocApp:
                     geometrie.polygons_of(mesh, ids3d), s
                 )
                 self._geo_queue.put(
-                    ("OK", (views, polys3d, bmin, bmax, len(ids), len(ids3d), s))
+                    (
+                        "OK",
+                        (
+                            views, polys3d, bmin, bmax, len(ids),
+                            len(ids3d), s, "polymesh",
+                        ),
+                    )
                 )
             except Exception as exc:  # wordt in het scherm gemeld
                 self._geo_queue.put(("ERR", exc))
@@ -355,17 +420,29 @@ class PostprocApp:
         except queue.Empty:
             self.root.after(100, self._poll_geo)
             return
+        if status == "WARN":
+            self._append_log(f"WAARSCHUWING: {payload}", "WARNING")
+            self.root.after(100, self._poll_geo)
+            return
         self.geo_btn.configure(state="normal")
         if status == "ERR":
             self.status_var.set("Geometrie laden mislukt.")
             self._append_log(f"FOUT: geometrie laden: {payload}", "ERROR")
             messagebox.showerror("Geometrie laden mislukt", str(payload))
             return
-        views, polys3d, bmin, bmax, n_total, n_3d, s = payload
-        self.status_var.set(f"Geometrie geladen ({n_total} body-faces).")
-        self._open_geometry_window(views, polys3d, bmin, bmax, n_total, n_3d, s)
+        views, polys3d, bmin, bmax, n_total, n_3d, s, source = payload
+        self._geo_cache[self.case_var.get().strip()] = payload
+        if source == "stl":
+            self.status_var.set(f"Geometrie geladen uit STL ({n_total} driehoeken).")
+        else:
+            self.status_var.set(f"Geometrie geladen ({n_total} body-faces).")
+        self._open_geometry_window(
+            views, polys3d, bmin, bmax, n_total, n_3d, s, source
+        )
 
-    def _open_geometry_window(self, views, polys3d, bmin, bmax, n_total, n_3d, s):
+    def _open_geometry_window(
+        self, views, polys3d, bmin, bmax, n_total, n_3d, s, source
+    ):
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
         case = self.case_var.get().strip().rstrip("\\/")
@@ -373,12 +450,21 @@ class PostprocApp:
         win.title(f"Geometrie — {os.path.basename(case)}")
         win.minsize(720, 580)
 
+        if source == "stl":
+            detail = (
+                f"({n_total} driehoeken uit STL; 2D solid via raster; "
+                f"3D: {n_3d} polygonen, decimatie + inflatie ×{s:.1f} = solid)"
+            )
+        else:
+            detail = (
+                f"({n_total} faces; 2D solid via raster; 3D: {n_3d} polygonen, "
+                f"cel-decimatie + inflatie ×{s:.1f} = solid)"
+            )
         ttk.Label(
             win,
             text=(
                 f"Atleetpatches {BODY_PATCHES} — {geometrie.sizes_text(bmin, bmax)} "
-                f"({n_total} faces; 2D solid via raster; 3D: {n_3d} polygonen, "
-                f"cel-decimatie + inflatie ×{s:.1f} = solid)"
+                f"{detail}"
             ),
         ).pack(padx=8, pady=(8, 0), anchor="w")
 

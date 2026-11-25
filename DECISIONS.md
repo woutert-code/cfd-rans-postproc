@@ -177,7 +177,32 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
-## Template voor nieuwe besluiten
+## Besluit 008: Geometrie bij voorkeur uit STL-bestanden i.p.v. de polyMesh
+
+**Datum:** 2026-11-25
+**Status:** Actief
+**Beslissing:**
+
+> **De geometrieviewer gebruikt, als ze beschikbaar zijn, STL-bestanden van de atleten (binair of ascii) in plaats van de polyMesh. De STL's worden gezocht in `constant/triSurface` van de case zelf, daarna in de bijbehorende mesh-map naast de case (bij `Run_X` de map `Mesh_X`). Per atleetpatch staat er dan één bestand `<patchnaam>.stl`. De polyMesh-route blijft als fallback bestaan; er zijn geen nieuwe dependencies toegevoegd.**
+
+### Toepassing
+
+- `geometrie.find_stl_dir()` zoekt de triSurface-map in drie bekende structuren: `constant/triSurface` in de case zelf; broer/zus-map `Mesh_<rest van de casenaam>` naast de case (OneDrive-structuur); en `<hoofdmap>/Mesh/Mesh_<rest>` naast `<hoofdmap>/Case/` (structuur met aparte Case- en Mesh-mappen, bijv. `E:\KNWU CFD\Tandem`). `read_stl()` leest binair of ascii; `read_body_triangles()` geeft per patch de driehoeken (of None: fallback naar polyMesh).
+- `gui.py` gebruikt de STL-route voor "Geometrie tonen" zodra alle atleetpatches als STL gevonden zijn; de polyMesh-pre-check geldt dan niet meer. Val de code terug op de polyMesh, dan verschijnt hiervan expliciet een waarschuwingsregel in het logvenster (geen stille fallback meer).
+- 2D-views: PIL-raster van de driehoekprojecties; 3D: decimatie tot ≤ 20.000 driehoeken met dezelfde inflatieregel als de mesh-route.
+
+### Motivatie
+
+1. **Snelheid:** de polyMesh van grote cases (~70M cellen) is 7–8 GB en kost > 150 s om te lezen alleen om ~3,5M body-faces te kunnen tonen; de STL's (2 × 28 MB) lezen in < 0,1 s — het geometrievenster opent in ~10 s in plaats van minuten.
+2. **Kwaliteit:** de STL is de originele CAD-oppervlakte, niet de gesnapte, gerefineerde mesh-vlakken.
+3. **Gebruiksgemak:** de geometrie kan bekeken worden ook voordat de volledige case lokaal beschikbaar is; tijdens het mesh-ontwerp kan de geometrie al worden gecontroleerd via de mesh-map.
+
+### Impact
+
+- Nieuwe functies in `geometrie.py`: `find_stl_dir`, `read_stl`, `read_body_triangles`, `bounding_box_triangles`, `raster_view_triangles` (gevectoriseerde rasterisatie via pixel-bbox per driehoek, ~3x sneller dan de PIL-lus bij ~1M driehoeken), `decimate_triangles` (met celgrootteschatting en 1D uniek-sleutel; ~6x sneller dan de polyMesh-decimatie), plus inflatie in dezelfde stijl als de polyMesh-route.
+- `gui.py` houdt het geometrieresultaat per case in het geheugen (sessie-cache): een tweede keer "Geometrie tonen" opent direct.
+- De 3D-weergave bij de STL-route gebruikt dezelfde decimatie-plus-inflatie-benadering; echte mesh-simplificatie (addendum 9 van de handoff van 2026-11-24) blijft een open punt voor verbetering, maar is met STL-driehoeken van ~1 mm minder nodig.
+- STL's zijn atleetgeometrie: net als de casedata vertrouwelijk en nooit in Git; tests gebruiken uitsluitend een klein fictief STL-bestand (`tests/test_geometrie_stl.py`).
 
 ```markdown
 ## Besluit XXX: [Korte titel]
@@ -218,3 +243,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | 005 | Aandeel per atleet in totale weerstand in output | 2026-11-24 | Actief |
 | 006 | Commit/push alleen na expliciete toestemming | 2026-11-24 | Actief |
 | 007 | Geometrie in startscherm: 2D-views + draaibare 3D | 2026-11-24 | Actief |
+| 008 | Geometrie bij voorkeur uit STL-bestanden | 2026-11-25 | Actief |
