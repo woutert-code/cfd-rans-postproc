@@ -232,6 +232,16 @@ def _process_inner(
 
     # ---- slice(s) ------------------------------------------------------------
     field_dir = os.path.join(case_dir, time_dir)
+    # Zwaartepunten van de body-faces: één keer berekenen (klein t.o.v. de
+    # hele mesh) en delen door alle slices, i.p.v. per slice opnieuw.
+    body_face_ids_list = [
+        patch_ids[name] for name in body_patches if name in patch_ids
+    ]
+    body_face_centroids = None
+    if body_face_ids_list:
+        body_ids_all = np.concatenate(body_face_ids_list)
+        _, body_face_centroids = krachten.face_geometry(mesh, body_ids_all)
+
     centroids_t0 = time.perf_counter()
     # Gebruik de verbeterde cell_centers functie uit slice_mod
     centroids = slice_mod.cell_centers(mesh, log=log.info)
@@ -266,6 +276,7 @@ def _process_inner(
             mesh_faces_labels=mesh.face_verts,
             body_patch_names=body_patches,
             mesh_patches=mesh.patches,
+            body_face_centroids=body_face_centroids,
             axis="y",
             pos=pos,
             tol=slice_thickness / 2.0,
@@ -298,6 +309,7 @@ def _process_inner(
                 mesh_faces_labels=mesh.face_verts,
                 body_patch_names=body_patches,
                 mesh_patches=mesh.patches,
+                body_face_centroids=body_face_centroids,
                 axis="x",
                 pos=pos,
                 tol=slice_thickness / 2.0,

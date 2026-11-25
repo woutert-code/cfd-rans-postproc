@@ -110,6 +110,7 @@ def make_slice_figure(
     u_ref,
     out_png,
     case_name,
+    body_face_centroids=None,
     log=None,
 ):
     """Maak een slice-afbeelding met tripcolor voor nauwkeurige mesh-weergave.
@@ -128,6 +129,12 @@ def make_slice_figure(
         u_ref: referentiesnelheid voor kleurenschaal
         out_png: uitvoerbestandsnaam
         case_name: casenaam voor titel
+        body_face_centroids: optionele (n_body_faces, 3) array met zwaartepunten
+            van de body-faces in de volgorde van de body-patches; door deze
+            vooraf te berekenen (één keer, vlak na het mesh lezen) hoeft de
+            volledige mesh hier niet per slice opnieuw doorzocht te worden.
+            Zonder deze array wordt als fallback de volledige mesh berekend
+            (achterwaarts compatibel, maar traag bij grote cases).
         log: optionele logging functie
         
     Returns:
@@ -196,9 +203,17 @@ def make_slice_figure(
         
         if body_face_inds:
             body_face_inds = np.array(body_face_inds, dtype=int)
-            body_face_cents = face_centroids(mesh_points, mesh_faces_offsets, mesh_faces_labels)
-            body_h, body_v = _plane_coords(body_face_cents[body_face_inds], axis)
-            body_mask = np.abs(body_face_cents[body_face_inds, ai] - pos) <= 2 * tol
+            if body_face_centroids is not None:
+                body_face_cents_sel = np.asarray(
+                    body_face_centroids, dtype=body_face_centroids.dtype
+                )
+            else:
+                # Fallback: alleen de body-faces berekenen (niet de hele mesh).
+                body_face_cents_sel = face_centroids(
+                    mesh_points, mesh_faces_offsets, mesh_faces_labels
+                )[body_face_inds]
+            body_h, body_v = _plane_coords(body_face_cents_sel, axis)
+            body_mask = np.abs(body_face_cents_sel[:, ai] - pos) <= 2 * tol
             if body_mask.any():
                 ax.plot(
                     body_h[body_mask], 
