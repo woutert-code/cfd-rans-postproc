@@ -28,11 +28,97 @@ try:
 except ImportError:  # tkinter zit standaard in Python op Windows
     tk = None
 
-from . import case_runner, geometrie
+from . import case_runner, geometrie, of_io
 from .__main__ import DEFAULT_SLICE_X
 
 # atleetpatches waarvoor de geometrie wordt getoond (zelfde default als process_case)
-BODY_PATCHES = ("pilot", "stoker")
+BODY_PATCHES: tuple[str, ...] = ("pilot", "stoker")
+
+# warn-meldingen bij het terugvallen van de geometrie op de polyMesh
+_WARN_STL_PATCHEN = (
+    "STL-geometrie niet bruikbaar voor patches {patches}; val terug op de "
+    "polyMesh (kan lang duren bij grote cases)."
+)
+_WARN_GEEN_STL = (
+    "Geen STL-geometrie gevonden (constant/triSurface of bijbehorende "
+    "Mesh_-map); polyMesh wordt gelezen (kan lang duren bij grote cases)."
+)
+
+
+def compute_geometry_payload(case_dir, body_patches=BODY_PATCHES):
+    """Bereken het geometrie-payload voor een case (display-vrij).
+
+    Voorkeursroute: STL's via read_body_triangles; fallback: polyMesh.
+    Retourneert (payload, waarschuwingen), waar payload het tuple is dat
+    _open_geometry_window verwacht:
+    (views, polys3d, bmin, bmax, n_total, n_3d, s, bron, kleuren3d).
+    Bij de STL-route zijn de views dict {patchnaam: mask} en kleuren3d een
+    lijst met één kleur per 3D-polygoon; bij de polyMesh-fallback een enkel
+    mask en None (alles in één kleur, zoals voorheen).
+    """
+    warns: list[str] = []
+    tris_map = geometrie.read_body_triangles(case_dir, body_patches)
+    if tris_map is not None:
+        all_tris = np.concatenate(list(tris_map.values()))
+        bmin, bmax = geometrie.bounding_box_triangles(all_tris)
+        # 2D: per atleet rasteriseren op hetzelfde rooster, zodat pilot en
+        # stoker elk hun eigen kleur kunnen krijgen
+        views = {}
+        for v in ("front", "side", "top"):
+            a, b = geometrie.VIEWS[v][0]
+            ext = (float(bmin[a]), float(bmax[a]), float(bmin[b]), float(bmax[b]))
+            bodies = {
+                naam: geometrie.raster_view_triangles(tris_map[naam], v, extent=ext)[0]
+                for naam in tris_map
+            }
+            views[v] = (bodies, ext)
+        # 3D: decimatie per atleet, budget naar rato van het aantal driehoeken
+        # zodat het totaal ≤ DEFAULT_MAX_POLYS_3D blijft; pilot wordt als
+        # laatste getekend (bovenop)
+        volgorde = [n for n in geometrie._PATCH_ORDER if n in tris_map] + sorted(
+            set(tris_map) - set(geometrie._PATCH_ORDER)
+        )
+        n_all = max(len(all_tris), 1)
+        polys3d: list = []
+        kleuren: list = []
+        s = 1.0
+        for naam in volgorde:
+            budget = max(
+                1, int(geometrie.DEFAULT_MAX_POLYS_3D * len(tris_map[naam]) / n_all)
+            )
+            sel, _h, s_body = geometrie.decimate_triangles(tris_map[naam], budget)
+            polys3d.extend(geometrie.inflate_polygons(list(sel), s_body))
+            kleuren.extend(
+                [geometrie.PATCH_COLORS.get(naam, "#08306b")] * len(sel)
+            )
+            s = max(s, s_body)
+        payload = (
+            views, polys3d, bmin, bmax, len(all_tris), len(polys3d), s, "stl",
+            kleuren,
+        )
+        return payload, warns
+    if geometrie.find_stl_dir(case_dir) is not None:
+        warns.append(_WARN_STL_PATCHEN.format(patches=body_patches))
+    else:
+        warns.append(_WARN_GEEN_STL)
+    mesh = of_io.read_mesh(case_dir)
+    ids = geometrie.body_face_ids(mesh, body_patches)
+    bmin, bmax = geometrie.bounding_box(mesh, ids)
+    views = {
+        v: geometrie.raster_view(mesh, ids, v)
+        for v in ("front", "side", "top")
+    }
+    ids3d, h = geometrie.decimate_surface(
+        mesh, ids, geometrie.DEFAULT_MAX_POLYS_3D
+    )
+    s = geometrie.inflation_factor(mesh, ids, h)
+    polys3d = geometrie.inflate_polygons(
+        geometrie.polygons_of(mesh, ids3d), s
+    )
+    payload = (
+        views, polys3d, bmin, bmax, len(ids), len(ids3d), s, "polymesh", None
+    )
+    return payload, warns
 
 # Kolommen van results.csv die in het scherm getoond worden: (csv-sleutel, titel)
 RESULT_COLUMNS = [
@@ -126,6 +212,9 @@ class PostprocApp:
         self._log_queue = queue.Queue()
         self._geo_queue = queue.Queue()
         self._geo_cache = {}  # case -> geometrie-payload (zelfde sessie)
+        self._views_queue = queue.Queue()
+        self._views_token = 0  # verlopen resultaten van oudere selecties negeren
+        self._views_polling = False
         self._build_widgets()
 
     def _build_widgets(self):
@@ -191,22 +280,44 @@ class PostprocApp:
         self.log_text.tag_config("ERROR", foreground="#b00020")
         frm.rowconfigure(7, weight=1)
 
-        ttk.Label(frm, text="Resultaten:").grid(row=8, column=0, sticky="nw", **pad)
+        # 2D-aanzichten, standaard zichtbaar tussen log en resultaten
+        ttk.Label(frm, text="Aanzichten:").grid(row=8, column=0, sticky="nw", **pad)
+        views_frm = ttk.Frame(frm)
+        views_frm.grid(row=8, column=1, columnspan=3, sticky="ew", **pad)
+        self._views_placeholder = ttk.Label(
+            views_frm,
+            text="(aanzichten verschijnen na het kiezen van een case-map)",
+            foreground="#999999",
+        )
+        self._views_placeholder.pack(anchor="w", padx=2, pady=2)
+        self._view_frames = {}
+        for _view, _naam in (
+            ("front", "Vooraanzicht"),
+            ("side", "Zijaanzicht"),
+            ("top", "Bovenaanzicht"),
+        ):
+            lf = ttk.LabelFrame(views_frm, text=_naam)
+            # tussenrapport: pas zichtbaar na het laden (zie _draw_view_panels)
+            lf.pack_forget()
+            self._view_frames[_view] = lf
+
+        ttk.Label(frm, text="Resultaten:").grid(row=9, column=0, sticky="nw", **pad)
         keys = [key for key, _ in RESULT_COLUMNS]
         self.tree = ttk.Treeview(frm, columns=keys, show="headings", height=5)
         for key, label in RESULT_COLUMNS:
             self.tree.heading(key, text=label)
             self.tree.column(key, width=90 if key == "patch" else 140, anchor="center")
-        self.tree.grid(row=9, column=0, columnspan=4, sticky="ew", **pad)
+        self.tree.grid(row=10, column=0, columnspan=4, sticky="ew", **pad)
 
         ttk.Label(frm, textvariable=self.output_var, foreground="#444444").grid(
-            row=10, column=0, columnspan=4, sticky="w", **pad
+            row=11, column=0, columnspan=4, sticky="w", **pad
         )
 
     def _browse(self):
         path = filedialog.askdirectory(title="Kies de CFD-case map")
         if path:
             self.case_var.set(path)
+            self._load_views_for_case()
 
     def _append_log(self, line, level=None):
         self.log_text.configure(state="normal")
@@ -307,6 +418,89 @@ class PostprocApp:
             "slice-figuur(en) en logbestand weggeschreven (figuren niet geopend)."
         )
 
+    def _load_views_for_case(self):
+        """Laad de 2D-aanzichten voor de gekozen case in een achtergrondthread.
+
+        Zelfde berekening als 'Geometrie tonen' (gedeeld via
+        compute_geometry_payload); het resultaat komt terecht in de
+        ingebedde panels tussen log en resultaten én in de sessie-cache.
+        """
+        case = self.case_var.get().strip()
+        if not case or not os.path.isdir(case):
+            return
+        # cache-hit: direct tekenen, geen thread nodig
+        if case in self._geo_cache:
+            self._draw_view_panels(self._geo_cache[case][0])
+            return
+        self._views_token += 1
+        token = self._views_token
+        self._views_placeholder.configure(
+            text="aanzichten laden...", foreground="#999999"
+        )
+        self._views_placeholder.pack(anchor="w", padx=2, pady=2)
+        self.status_var.set("Aanzichten laden...")
+
+        def worker():
+            try:
+                payload, warns = compute_geometry_payload(case, BODY_PATCHES)
+                self._views_queue.put(("VIEW_OK", token, payload, warns))
+            except Exception as exc:
+                self._views_queue.put(("VIEW_ERR", token, case, exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+        if not self._views_polling:
+            self._views_polling = True
+            self.root.after(100, self._poll_views)
+
+    def _poll_views(self):
+        try:
+            msg = self._views_queue.get_nowait()
+        except queue.Empty:
+            self.root.after(100, self._poll_views)
+            return
+        if msg[0] == "VIEW_OK":
+            _status, token, payload, warns = msg
+            if token != self._views_token:
+                self.root.after(100, self._poll_views)
+                return
+            case = self.case_var.get().strip()
+            self._geo_cache[case] = payload
+            for w in warns:
+                self._append_log(f"WAARSCHUWING: {w}", "WARNING")
+            self._draw_view_panels(payload[0])
+            bron = "STL" if payload[7] == "stl" else "polyMesh"
+            self.status_var.set(
+                f"Aanzichten geladen ({bron}); draaibaar 3D via 'Geometrie tonen'."
+            )
+        elif msg[0] == "VIEW_ERR":
+            _status, token, case, exc = msg
+            self.status_var.set("Aanzichten laden mislukt.")
+            self._append_log(f"FOUT: aanzichten laden: {exc}", "ERROR")
+        self.root.after(100, self._poll_views)
+
+    def _draw_view_panels(self, views):
+        """Teken de drie 2D-aanzichten klein, ingebed tussen log en resultaten."""
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        self._views_placeholder.pack_forget()
+        for view, _naam in (
+            ("front", "Vooraanzicht"),
+            ("side", "Zijaanzicht"),
+            ("top", "Bovenaanzicht"),
+        ):
+            lf = self._view_frames[view]
+            for w in lf.winfo_children():
+                w.destroy()
+            mask, extent = views[view]
+            fig = geometrie.make_view_figure(
+                view, mask, extent, figsize=(3.1, 2.5), with_title=False
+            )
+            canvas = FigureCanvasTkAgg(fig, master=lf)
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+            canvas.draw()
+            lf.pack(side="left", fill="both", expand=True, padx=(0, 6), pady=2)
+        self.root.update_idletasks()
+
     def _show_geometry(self):
         """Laad de geometrie in een achtergrondthread en open het venster.
 
@@ -337,77 +531,13 @@ class PostprocApp:
         self.status_var.set(
             "Geometrie laden uit STL..." if stl_mode else "Mesh laden voor geometrie..."
         )
-        from . import of_io
 
         def worker():
             try:
-                tris_map = geometrie.read_body_triangles(case, BODY_PATCHES)
-                if tris_map is not None:
-                    # STL-route: geen polyMesh nodig
-                    all_tris = np.concatenate(list(tris_map.values()))
-                    bmin, bmax = geometrie.bounding_box_triangles(all_tris)
-                    views = {
-                        v: geometrie.raster_view_triangles(all_tris, v)
-                        for v in ("front", "side", "top")
-                    }
-                    sel, h, s = geometrie.decimate_triangles(
-                        all_tris, geometrie.DEFAULT_MAX_POLYS_3D
-                    )
-                    polys3d = geometrie.inflate_polygons(list(sel), s)
-                    self._geo_queue.put(
-                        (
-                            "OK",
-                            (
-                                views, polys3d, bmin, bmax, len(all_tris),
-                                len(sel), s, "stl",
-                            ),
-                        )
-                    )
-                    return
-                if stl_mode:
-                    # STL's gevonden, maar niet voor alle patches bruikbaar
-                    self._geo_queue.put(
-                        (
-                            "WARN",
-                            f"STL-geometrie niet bruikbaar voor patches "
-                            f"{BODY_PATCHES}; val terug op de polyMesh "
-                            f"(kan lang duren bij grote cases).",
-                        )
-                    )
-                else:
-                    self._geo_queue.put(
-                        (
-                            "WARN",
-                            "Geen STL-geometrie gevonden (constant/triSurface "
-                            "of bijbehorende Mesh_-map); polyMesh wordt "
-                            "gelezen (kan lang duren bij grote cases).",
-                        )
-                    )
-                mesh = of_io.read_mesh(case)
-                ids = geometrie.body_face_ids(mesh, BODY_PATCHES)
-                bmin, bmax = geometrie.bounding_box(mesh, ids)
-                # 2D: solid silhouette via PIL-raster over alle faces
-                views = {
-                    v: geometrie.raster_view(mesh, ids, v)
-                    for v in ("front", "side", "top")
-                }
-                # 3D: cel-decimatie + inflatie van de polygonen (solid, geen gaten)
-                ids3d, h = geometrie.decimate_surface(
-                    mesh, ids, geometrie.DEFAULT_MAX_POLYS_3D
-                )
-                s = geometrie.inflation_factor(mesh, ids, h)
-                polys3d = geometrie.inflate_polygons(
-                    geometrie.polygons_of(mesh, ids3d), s
-                )
-                self._geo_queue.put(
-                    (
-                        "OK",
-                        (
-                            views, polys3d, bmin, bmax, len(ids),
-                            len(ids3d), s, "polymesh",
-                        ),
-                    )
-                )
+                payload, warns = compute_geometry_payload(case, BODY_PATCHES)
+                for w in warns:
+                    self._geo_queue.put(("WARN", w))
+                self._geo_queue.put(("OK", payload))
             except Exception as exc:  # wordt in het scherm gemeld
                 self._geo_queue.put(("ERR", exc))
 
@@ -430,18 +560,18 @@ class PostprocApp:
             self._append_log(f"FOUT: geometrie laden: {payload}", "ERROR")
             messagebox.showerror("Geometrie laden mislukt", str(payload))
             return
-        views, polys3d, bmin, bmax, n_total, n_3d, s, source = payload
+        views, polys3d, bmin, bmax, n_total, n_3d, s, source, kleuren = payload
         self._geo_cache[self.case_var.get().strip()] = payload
         if source == "stl":
             self.status_var.set(f"Geometrie geladen uit STL ({n_total} driehoeken).")
         else:
             self.status_var.set(f"Geometrie geladen ({n_total} body-faces).")
         self._open_geometry_window(
-            views, polys3d, bmin, bmax, n_total, n_3d, s, source
+            views, polys3d, bmin, bmax, n_total, n_3d, s, source, kleuren
         )
 
     def _open_geometry_window(
-        self, views, polys3d, bmin, bmax, n_total, n_3d, s, source
+        self, views, polys3d, bmin, bmax, n_total, n_3d, s, source, kleuren=None
     ):
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
@@ -489,7 +619,7 @@ class PostprocApp:
             tab3d,
             text="Sleep met de muis over de figuur om te draaien; scroll om te zoomen.",
         ).pack(anchor="w", padx=4, pady=2)
-        fig3d = geometrie.make_3d_figure(polys3d, bmin, bmax)
+        fig3d = geometrie.make_3d_figure(polys3d, bmin, bmax, kleuren=kleuren)
         FigureCanvasTkAgg(fig3d, master=tab3d).get_tk_widget().pack(
             fill="both", expand=True
         )

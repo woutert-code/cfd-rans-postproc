@@ -204,6 +204,31 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 - De 3D-weergave bij de STL-route gebruikt dezelfde decimatie-plus-inflatie-benadering; echte mesh-simplificatie (addendum 9 van de handoff van 2026-11-24) blijft een open punt voor verbetering, maar is met STL-driehoeken van ~1 mm minder nodig.
 - STL's zijn atleetgeometrie: net als de casedata vertrouwelijk en nooit in Git; tests gebruiken uitsluitend een klein fictief STL-bestand (`tests/test_geometrie_stl.py`).
 
+## Besluit 009: 2D-aanzichten standaard zichtbaar in het startscherm
+
+**Datum:** 2026-11-25
+**Status:** Actief
+**Beslissing:**
+
+> De drie 2D-aanzichten (voor-, zij- en bovenaanzicht) worden automatisch geladen en getoond in het startscherm zodra een case-map is gekozen, tussen het logvenster en de resultaten in. Het draaibare 3D-aanzicht blijft achter de knop "Geometrie tonen".
+
+### Toepassing
+
+- `gui.py` start na het kiezen van een case-map (`_browse`) direct `_load_views_for_case()`: een achtergrondthread berekent via `compute_geometry_payload()` de drie 2D-views (STL-route bij voorkeur, polyMesh-fallback) en zet ze via een wachtrij terug naar de GUI-thread.
+- De drie panelen staan in rasterrij 8; zolang er geen case is gekozen staat daar een placeholder. De LabelFrames van de views zijn verborgen tot ze geladen zijn.
+- Fouten bij het automatisch laden gaan alleen naar het logvenster, niet als popup; "Geometrie tonen" werkt onveranderd en toont daarnaast het 3D-aanzicht.
+
+### Motivatie
+
+1. **Gebruiksgemak:** de 2D-geometriechecks waren elke keer een extra klik; ze zijn de meest gebruikte checks en horen direct zichtbaar te zijn na het kiezen van een case.
+2. **Overzicht:** de volgorde op het startscherm wordt invoer, verwerking (log), geometrie-check, resultaten.
+3. **Kost het weinig:** door de STL-route (besluit 008) duurt het laden van de views ~2 s, dus automatisch laden is zonder merkbare vertraging bij het kiezen van een case.
+
+### Impact
+
+- Nieuwe modulefunctie `compute_geometry_payload()` in `gui.py`, gedeeld door de automatische views en "Geometrie tonen"; worker/polling-patroon met token tegen verouderde resultaten.
+- Raster van het startscherm verschuift: log op rij 6-7, views op rij 8, resultaten op rij 9-11.
+- README beschrijft het nieuwe gedrag bij "Starten via start.bat".
 ```markdown
 ## Besluit XXX: [Korte titel]
 
@@ -244,3 +269,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | 006 | Commit/push alleen na expliciete toestemming | 2026-11-24 | Actief |
 | 007 | Geometrie in startscherm: 2D-views + draaibare 3D | 2026-11-24 | Actief |
 | 008 | Geometrie bij voorkeur uit STL-bestanden | 2026-11-25 | Actief |
+| 009 | 2D-aanzichten standaard in startscherm | 2026-11-25 | Actief |

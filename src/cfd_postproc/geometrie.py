@@ -48,6 +48,14 @@ DEFAULT_MAX_INFLATE = 6.0
 # rasterresolutie van de 2D-aanzichten [m]
 DEFAULT_RASTER_DX = 0.002
 
+# kleur per atleetpatch in de aanzichten; de donkerblauwe kleur is exact de
+# "Blues"-waarde die de samengevoegde silhouette eerder had (stoker dus
+# onveranderd), de pilot lichtblauw. _PATCH_ORDER bepaalt de schildervolgorde:
+# later = bovenop, zodat de voorste atleet zichtbaar blijft waar de
+# projecties overlappen.
+PATCH_COLORS = {"pilot": "#6baed6", "stoker": "#08306b"}
+_PATCH_ORDER = ("stoker", "pilot")
+
 
 def body_face_ids(mesh, patch_names) -> np.ndarray:
     """Alle face-ids van de gegeven patches; onbekende patches worden overgeslagen."""
@@ -192,35 +200,63 @@ def polygons_of(mesh, face_ids) -> list:
     return [pts[verts[off[i] : off[i + 1]]] for i in face_ids]
 
 
-def make_view_figure(view: str, mask: np.ndarray, extent, color: str = "#4c72b0"):
-    """Matplotlib-Figure van één 2D-view: de gerasteriseerde (solid) silhouette."""
+def make_view_figure(view: str, mask, extent, color: str = "#4c72b0",
+                     figsize=(7, 5), dpi: int = 100, with_title: bool = True):
+    """Matplotlib-Figure van één 2D-view: de gerasteriseerde (solid) silhouette.
+
+    mask is of één bool-mask (één silhouette, "Blues"-kleur zoals voorheen)
+    of een dict {patchnaam: mask}: dan wordt elke body in de kleur uit
+    PATCH_COLORS getekend (onbekende patches in `color`), met later in de
+    schildervolgorde bovenop. Met figsize/dpi/with_title geschikt gemaakt
+    voor de kleine, ingebedde panels in het startscherm (zonder titel; de
+    naam staat op het LabelFrame).
+    """
     import matplotlib
+    from matplotlib.colors import to_rgb
     from matplotlib.figure import Figure
 
     axes, labels, titel = VIEWS[view]
-    fig = Figure(figsize=(7, 5), dpi=100)
+    fig = Figure(figsize=figsize, dpi=dpi)
     ax = fig.add_subplot(111)
-    cmap = matplotlib.colormaps["Blues"].with_extremes(bad=(0, 0, 0, 0))
-    ax.imshow(
-        np.ma.masked_where(~mask, mask.astype(float)),
-        extent=extent,
-        origin="lower",
-        aspect="equal",
-        cmap=cmap,
-        vmin=0,
-        vmax=1,
-    )
+    if isinstance(mask, dict):
+        volgorde = [n for n in _PATCH_ORDER if n in mask] + sorted(
+            set(mask) - set(_PATCH_ORDER)
+        )
+        nv, nh = next(iter(mask.values())).shape
+        rgb = np.ones((nv, nh, 3), dtype=float)
+        alpha = np.zeros((nv, nh), dtype=float)
+        for naam in volgorde:
+            rgb[mask[naam]] = to_rgb(PATCH_COLORS.get(naam, color))
+            alpha[mask[naam]] = 1.0
+        ax.imshow(
+            np.dstack([rgb, alpha]),
+            extent=extent,
+            origin="lower",
+            aspect="equal",
+        )
+    else:
+        cmap = matplotlib.colormaps["Blues"].with_extremes(bad=(0, 0, 0, 0))
+        ax.imshow(
+            np.ma.masked_where(~mask, mask.astype(float)),
+            extent=extent,
+            origin="lower",
+            aspect="equal",
+            cmap=cmap,
+            vmin=0,
+            vmax=1,
+        )
     ax.set_xlabel(labels[0])
     ax.set_ylabel(labels[1])
-    h, v = extent[1] - extent[0], extent[3] - extent[2]
-    ax.set_title(f"{titel} — {h:.3f} × {v:.3f} m")
+    if with_title:
+        h, v = extent[1] - extent[0], extent[3] - extent[2]
+        ax.set_title(f"{titel} — {h:.3f} × {v:.3f} m")
     fig.tight_layout()
     return fig
 
 
 def make_3d_figure(polys: list, bmin: np.ndarray, bmax: np.ndarray,
                    title: str = "3D-geometrie — sleep om te draaien",
-                   color: str = "#4c72b0"):
+                   color: str = "#4c72b0", kleuren: list | None = None):
     """Matplotlib-Figure met 3D-assen; in een interactieve canvas met de muis draaibaar.
 
     edgecolor = facecolor, zodat de naden tussen de gedecimeerde faces niet
@@ -231,11 +267,20 @@ def make_3d_figure(polys: list, bmin: np.ndarray, bmax: np.ndarray,
 
     fig = Figure(figsize=(6.5, 6), dpi=100)
     ax = fig.add_subplot(111, projection="3d")
-    ax.add_collection3d(
-        Poly3DCollection(
-            polys, facecolor=color, edgecolor=color, linewidth=0.2, shade=False
+    if kleuren is not None:
+        # één kleur per polygoon (in het geval van de STL-route: per atleet)
+        ax.add_collection3d(
+            Poly3DCollection(
+                polys, facecolors=kleuren, edgecolors=kleuren,
+                linewidth=0.2, shade=False,
+            )
         )
-    )
+    else:
+        ax.add_collection3d(
+            Poly3DCollection(
+                polys, facecolor=color, edgecolor=color, linewidth=0.2, shade=False
+            )
+        )
     d = bmax - bmin
     # bij een plat vlak (min == max op een as) die as iets uit elkaar trekken,
     # anders is de transformatie singulier
@@ -362,7 +407,9 @@ def bounding_box_triangles(tris: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return allpts.min(axis=0), allpts.max(axis=0)
 
 
-def raster_view_triangles(tris: np.ndarray, view: str, dx: float = DEFAULT_RASTER_DX):
+def raster_view_triangles(
+    tris: np.ndarray, view: str, dx: float = DEFAULT_RASTER_DX, extent=None
+):
     """Zelfde interface als raster_view, maar voor STL-driehoeken.
 
     Retourneert (mask, extent): gevulde silhouette op het view-vlak en de
@@ -371,20 +418,30 @@ def raster_view_triangles(tris: np.ndarray, view: str, dx: float = DEFAULT_RASTE
     typisch kleiner dan 1 pixel; een binnen-test op pixelcentra zou dunne
     driehoeken laten wegvallen). De silhouette kan daardoor ~1 pixel (~dx)
     breder lijken; voor een visuele check onmerkbaar.
+
+    Met extent=(h0, h1, v0, v1) vallen driehoeken van meerdere bodies op
+    hetzelfde rooster (zelfde oorsprong en afmeting), zodat de masks per body
+    met verschillende kleuren over elkaar kunnen worden getekend.
     """
     a, b = VIEWS[view][0]
     tris = np.asarray(tris, dtype=np.float32).reshape(-1, 3, 3)
     hall = tris[:, :, a].ravel()
     vall = tris[:, :, b].ravel()
-    hmin, vmin = float(hall.min()), float(vall.min())
-    nh = int(np.ceil((hall.max() - hmin) / dx)) + 2
-    nv = int(np.ceil((vall.max() - vmin) / dx)) + 2
+    if extent is None:
+        hmin, vmin = float(hall.min()), float(vall.min())
+        nh = int(np.ceil((hall.max() - hmin) / dx)) + 2
+        nv = int(np.ceil((vall.max() - vmin) / dx)) + 2
+    else:
+        hmin, hmax, vmin, vmax = (float(e) for e in extent)
+        nh = int(np.ceil((hmax - hmin) / dx)) + 1
+        nv = int(np.ceil((vmax - vmin) / dx)) + 1
 
     ph = (tris[:, :, a] - hmin) / dx  # (n, 3) pixel-coordinaten
     pv = (tris[:, :, b] - vmin) / dx
     mask = _rasterize_triangles_2d(ph, pv, nh, nv)
-    extent = (hmin, hmin + nh * dx, vmin, vmin + nv * dx)
-    return mask, extent
+    if extent is None:
+        extent = (hmin, hmin + nh * dx, vmin, vmin + nv * dx)
+    return mask, tuple(float(e) for e in extent)
 
 
 def _rasterize_triangles_2d(ph: np.ndarray, pv: np.ndarray, nh: int, nv: int) -> np.ndarray:

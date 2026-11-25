@@ -66,23 +66,29 @@ geopend. In het startscherm staat onder de slice-velden een notitie hierover,
 inclusief de opmerking dat de manier waarop slices worden gemaakt in een
 volgende versie wordt verbeterd (plan-van-aanpak.md §12, punt 7).
 
-Met **Geometrie tonen** opent een apart venster met de solid-geometrie van
-Met **Geometrie tonen** opent een apart venster met de solid-geometrie van
-de atleetpatches (`pilot,stoker`). De geometrie wordt bij voorkeur gehaald
+De drie 2D-aanzichten (voor-, zij- en bovenaanzicht) worden automatisch
+geladen zodra je een case-map kiest en verschijnen in het startscherm tussen
+het logvenster en de resultaten; hiervoor is geen klik nodig. Ook deze
+aanzichten worden bij voorkeur gehaald
 uit **STL-bestanden**: eerst `constant/triSurface` in de case zelf, daarna
 in de bijbehorende mesh-map naast de case (bij bijv. `Run_Tandem_027` de map
 `Mesh_Tandem_027`, bestanden `pilot.stl` en `stoker.stl`). In dat geval hoeft
 de polyMesh helemaal niet gelezen te worden — de aanzichten staan dan binnen
 enkele seconden in het scherm, ook voor grote cases, en de weergave is de
-originele CAD-oppervlakte i.p.v. de gesnapte mesh-vlakken. De STL-bestanden
+originele CAD-oppervlakte i.p.v. de gesnapte mesh-vlakken. In de aanzichten
+is de pilot lichtblauw en de stoker donkerblauw; de polyMesh-fallback toont
+(zoals voorheen) alles in één donkerblauwe kleur. De STL-bestanden
 blijven vertrouwelijk en buiten Git. Als er geen STL's beschikbaar zijn,
-valt het venster terug op de polyMesh-route: vooraanzicht, zijaanzicht en
-bovenaanzicht (2D, gerasteriseerd over alle faces, met de afmetingen uit de
-bounding box — lengte × breedte × hoogte) plus een 3D-figuur die met de muis
-draaibaar is (scroll = zoomen). Voor de 3D wordt het oppervlak cel-geïdecimeerd
-(één face per oppervlakte-cel, ≤ 20.000 polygonen) en worden de polygonen
-licht opgeblazen rond hun zwaartepunt, zodat het solid is zonder gaten bij
-grote meshes (zie `src/cfd_postproc/geometrie.py`).
+valt de weergave terug op de polyMesh-route: de aanzichten worden dan
+gerasteriseerd over alle faces, met de afmetingen uit de bounding box —
+lengte × breedte × hoogte. Lukt het automatisch laden niet, dan verschijnt
+daarvan alleen een regel in het logvenster.
+Met **Geometrie tonen** opent een apart venster met een 3D-figuur van
+dezelfde geometrie, die met de muis draaibaar is (scroll = zoomen). Voor de
+3D wordt het oppervlak cel-geïdecimeerd (één face per oppervlakte-cel,
+≤ 20.000 polygonen) en worden de polygonen licht opgeblazen rond hun
+zwaartepunt, zodat het solid is zonder gaten bij grote meshes (zie
+`src/cfd_postproc/geometrie.py`).
 
 ## Gebruik via de CLI (batch)
 

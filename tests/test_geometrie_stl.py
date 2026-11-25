@@ -208,6 +208,64 @@ class TestViewsEnDecimatie(unittest.TestCase):
         sel, h, s = geometrie.decimate_triangles(_vierkant(), max_polys=10_000)
         self.assertEqual(len(sel), 2)
 
+    def test_raster_view_triangles_extent_gelijk_rooster(self):
+        # zelfde extent -> zelfde roosterafmetingen, zodat de per-patch masks
+        # over elkaar getekend kunnen worden
+        dx = 0.005
+        _, ext = geometrie.raster_view_triangles(self.all_tris, "top", dx=dx)
+        m1, e1 = geometrie.raster_view_triangles(_vierkant(), "top", dx=dx, extent=ext)
+        m2, e2 = geometrie.raster_view_triangles(_vierkant_y(), "top", dx=dx, extent=ext)
+        self.assertEqual(e1, e2)
+        self.assertEqual(m1.shape, m2.shape)
+
+    def test_make_view_figure_kleur_per_patch(self):
+        from matplotlib.colors import to_rgb
+
+        dx = 0.005
+        _, ext = geometrie.raster_view_triangles(self.all_tris, "top", dx=dx)
+        m_stoker = geometrie.raster_view_triangles(
+            _vierkant(), "top", dx=dx, extent=ext
+        )[0]
+        m_pilot = geometrie.raster_view_triangles(
+            _vierkant_y(), "top", dx=dx, extent=ext
+        )[0]
+        fig = geometrie.make_view_figure(
+            "top", {"pilot": m_pilot, "stoker": m_stoker}, ext
+        )
+        arr = fig.axes[0].images[0].get_array()
+        self.assertEqual(arr.shape, m_pilot.shape + (4,))
+        alleen_pilot = m_pilot & ~m_stoker
+        alleen_stoker = m_stoker & ~m_pilot
+        self.assertGreater(alleen_pilot.sum(), 0)
+        self.assertGreater(alleen_stoker.sum(), 0)
+        self.assertTrue(
+            np.allclose(
+                arr[alleen_pilot][:, :3],
+                to_rgb(geometrie.PATCH_COLORS["pilot"]),
+            )
+        )
+        self.assertTrue(
+            np.allclose(
+                arr[alleen_stoker][:, :3],
+                to_rgb(geometrie.PATCH_COLORS["stoker"]),
+            )
+        )
+        self.assertTrue(np.all(arr[alleen_pilot][:, 3] == 1.0))
+        self.assertTrue(np.all(arr[~(m_pilot | m_stoker)][:, 3] == 0.0))
+
+
+class TestKleurenPerPatch(unittest.TestCase):
+    def test_patch_colors_pilot_licht_stoker_onveranderd(self):
+        # stoker exact de oude "Blues"-kleur van de samengevoegde silhouette
+        self.assertEqual(geometrie.PATCH_COLORS["stoker"], "#08306b")
+        pilot = geometrie.PATCH_COLORS["pilot"]
+        stoker = geometrie.PATCH_COLORS["stoker"]
+        # pilot: duidelijk lichter (veel hogere roodwaarde) en herkenbaar blauw
+        self.assertGreater(int(pilot[1:3], 16), 90)
+        self.assertGreater(int(pilot[3:5], 16), 90)
+        self.assertGreater(int(pilot[5:7], 16), int(pilot[1:3], 16) + 30)
+        self.assertLess(int(stoker[1:3], 16), 20)
+
 
 if __name__ == "__main__":
     unittest.main()
