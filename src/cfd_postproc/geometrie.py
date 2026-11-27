@@ -40,6 +40,12 @@ VIEWS = {
     "top": ((0, 1), ("x [m]", "y [m]"), "Bovenaanzicht (x-y vlak)"),
 }
 
+# diepte-as per view voor de Cp-weergave (painter's algorithm): (as, teken van
+# de camerakant). Bij 'front' kijkt de camera vanaf -x (de voorkant van de
+# atleet, de stroom loopt in +x-richting), bij 'side' vanaf +y en bij 'top'
+# vanaf +z (van boven). De dichtstbijzijnde face wint in de projectie.
+VIEW_DEPTH = {"front": (0, -1.0), "side": (1, 1.0), "top": (2, 1.0)}
+
 # limiet voor het aantal polygonen in de 3D-figuur (bij meer wordt de
 # interactieve rotatie traag; benchmark: 15k ~0.5 s/redraw, 60k ~2.2 s)
 DEFAULT_MAX_POLYS_3D = 20_000
@@ -254,6 +260,56 @@ def make_view_figure(view: str, mask, extent, color: str = "#4c72b0",
     return fig
 
 
+def make_cp_view_figure(view: str, cp_img, extent, cmap: str = "RdBu_r", vmax=None,
+                        vmin=None, figsize=(7, 5), dpi: int = 100, with_title: bool = True):
+    """Matplotlib-Figure van één 2D-view met de Cp-distributie op het oppervlak.
+
+    cp_img: float-array (nv, nh) met per pixel de Cp van de zichtbare face
+    (NaN buiten het lichaam), bijv. gebouwd met raster_view_index +
+    cp_image_from_index. extent = (hmin, hmax, vmin, vmax) in meter.
+
+    Divergente kleurschaal (standaard RdBu_r: rood = hoge druk/stagnatie,
+    blauw = lage druk/loslating), inclusief colorbar. Zonder vmin/vmax:
+    automatisch symmetrisch rond 0, [-max|Cp|, max|Cp|]. Met vmin en/of vmax
+    opgegeven wordt dat bereik gebruikt (bijv. vmin=-2, vmax=1; de
+    ontbrekende kant wordt dan gespiegeld).
+    """
+    from matplotlib.figure import Figure
+
+    _axes, labels, titel = VIEWS[view]
+    cp = np.ma.masked_invalid(np.asarray(cp_img, dtype=np.float32))
+    if vmin is None and vmax is None:
+        finite = cp.compressed()
+        m = float(np.abs(finite).max()) if finite.size else 1.0
+        if not np.isfinite(m) or m <= 0:
+            m = 1.0
+        vmin, vmax = -m, m
+    else:
+        if vmax is None:
+            vmax = -vmin
+        if vmin is None:
+            vmin = -vmax
+    fig = Figure(figsize=figsize, dpi=dpi)
+    ax = fig.add_subplot(111)
+    im = ax.imshow(
+        cp,
+        extent=extent,
+        origin="lower",
+        aspect="equal",
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+    )
+    fig.colorbar(im, ax=ax, label="Cp [-]")
+    ax.set_xlabel(labels[0])
+    ax.set_ylabel(labels[1])
+    if with_title:
+        h, v = extent[1] - extent[0], extent[3] - extent[2]
+        ax.set_title(f"{titel} — Cp, {h:.3f} × {v:.3f} m")
+    fig.tight_layout()
+    return fig
+
+
 def make_3d_figure(polys: list, bmin: np.ndarray, bmax: np.ndarray,
                    title: str = "3D-geometrie — sleep om te draaien",
                    color: str = "#4c72b0", kleuren: list | None = None):
@@ -444,52 +500,153 @@ def raster_view_triangles(
     return mask, tuple(float(e) for e in extent)
 
 
+def _bbox_arrays(ph: np.ndarray, pv: np.ndarray, nh: int, nv: int):
+    """Pixel-bbox (h0, h1, v0, v1) per polygon uit (n, k) pixelcoördinaten."""
+    h0 = np.clip(np.floor(ph.min(axis=1)).astype(np.int64), 0, nh - 1)
+    h1 = np.clip(np.ceil(ph.max(axis=1)).astype(np.int64), 0, nh - 1)
+    v0 = np.clip(np.floor(pv.min(axis=1)).astype(np.int64), 0, nv - 1)
+    v1 = np.clip(np.ceil(pv.max(axis=1)).astype(np.int64), 0, nv - 1)
+    return h0, h1, v0, v1
+
+
+def _rasterize_bboxes(h0, h1, v0, v1, nh: int, nv: int, out: np.ndarray, labels=None):
+    """Vul `out` met de pixel-bbox van elke rij, in de gegeven volgorde.
+
+    out is een bool-mask (dan wordt True gezet) of een int32-beeld (dan wordt
+    `labels[rij]` geschreven, of het rijnummer als labels=None). Werkt in
+    blokken van ~1M kandidaat-pixels zodat het geheugengebruik begrensd blijft.
+    Latere rijen overschrijven eerdere: bij een int-beeld met rijen gesorteerd
+    van ver naar dichtbij geeft dat painter's algorithm (dichtstbij wint).
+    """
+    n = len(h0)
+    if n == 0:
+        return out
+    bw = h1 - h0 + 1  # bbox-breedte in pixels per rij
+    bh = v1 - v0 + 1
+    per_tri = bw * bh  # pixels per rij
+
+    tot = int(per_tri.sum())
+    if tot == 0:
+        return out
+    cum = np.cumsum(per_tri)
+
+    is_bool = out.dtype == np.bool_
+    BLOCK = 1_000_000
+    g0 = 0  # globale pixel-offset van het blok
+    i0 = 0  # eerste rij van het blok
+    while g0 < tot:
+        i1 = int(np.searchsorted(cum, g0 + BLOCK, side="right"))
+        i1 = max(i1, i0 + 1, min(i1, n))  # minimaal één rij per blok
+        counts = per_tri[i0:i1]
+        tot_blk = int(counts.sum())
+        row = np.repeat(
+            np.arange(i1 - i0, dtype=np.int64) + i0, counts
+        )
+        starts = cum[i0:i1] - counts  # globale start-index per rij
+        within = np.arange(tot_blk, dtype=np.int64) + g0 - starts[row - i0]
+        bw_t = bw[row]
+        bx = within % bw_t
+        by = within // bw_t
+        px = h0[row] + bx
+        py = v0[row] + by
+        if is_bool:
+            out[py, px] = True
+        else:
+            out[py, px] = labels[row] if labels is not None else row
+        g0 = int(cum[i1 - 1])
+        i0 = i1
+    return out
+
+
 def _rasterize_triangles_2d(ph: np.ndarray, pv: np.ndarray, nh: int, nv: int) -> np.ndarray:
     """Vul een (nv, nh)-masker met de pixel-bbox van elke driehoek.
 
     ph, pv: (n, 3) driehoekcoordinaten in pixelruimte. Werkt in blokken van
     ~1M kandidaat-pixels zodat het geheugengebruik begrensd blijft.
     """
-    n = ph.shape[0]
     mask = np.zeros((nv, nh), dtype=bool)
-    if n == 0:
+    if ph.shape[0] == 0:
         return mask
+    h0, h1, v0, v1 = _bbox_arrays(ph, pv, nh, nv)
+    return _rasterize_bboxes(h0, h1, v0, v1, nh, nv, mask)
 
-    h0 = np.clip(np.floor(ph.min(axis=1)).astype(np.int64), 0, nh - 1)
-    h1 = np.clip(np.ceil(ph.max(axis=1)).astype(np.int64), 0, nh - 1)
-    v0 = np.clip(np.floor(pv.min(axis=1)).astype(np.int64), 0, nv - 1)
-    v1 = np.clip(np.ceil(pv.max(axis=1)).astype(np.int64), 0, nv - 1)
-    bw = h1 - h0 + 1  # bbox-breedte in pixels per driehoek
-    bh = v1 - v0 + 1
-    per_tri = bw * bh  # pixels per driehoek
 
-    tot = int(per_tri.sum())
-    if tot == 0:
-        return mask
-    cum = np.cumsum(per_tri)
+def raster_view_index(mesh, face_ids, view: str, dx: float = DEFAULT_RASTER_DX, extent=None):
+    """Rasteriseer de projectie van alle gegeven faces naar een face-index-beeld.
 
-    BLOCK = 1_000_000
-    g0 = 0  # globale pixel-offset van het blok
-    i0 = 0  # eerste driehoek van het blok
-    while g0 < tot:
-        i1 = int(np.searchsorted(cum, g0 + BLOCK, side="right"))
-        i1 = max(i1, i0 + 1, min(i1, n))  # minimaal één driehoek per blok
-        counts = per_tri[i0:i1]
-        tot_blk = int(counts.sum())
-        tri_id = np.repeat(
-            np.arange(i1 - i0, dtype=np.int64) + i0, counts
-        )
-        starts = cum[i0:i1] - counts  # globale start-index per driehoek
-        within = np.arange(tot_blk, dtype=np.int64) + g0 - starts[tri_id - i0]
-        bw_t = bw[tri_id]
-        bx = within % bw_t
-        by = within // bw_t
-        px = h0[tri_id] + bx
-        py = v0[tri_id] + by
-        mask[py, px] = True
-        g0 = int(cum[i1 - 1])
-        i0 = i1
-    return mask
+    Zelfde raster als raster_view, maar per pixel wordt bijgehouden welke face
+    daar zichtbaar is: de faces worden op de diepte-as van de view gesorteerd
+    (painter's algorithm, van ver naar dichtbij), zodat in de projectie de
+    dichtstbijzijnde face wint (bij de Cp-weergave: de kant van de atleet die
+    de camera ziet).
+
+    Retourneert (idx, extent): idx is een int32-array (nv, nh) met per pixel
+    het rijnummer in `face_ids` van de zichtbare face (-1 = achtergrond);
+    extent = (hmin, hmax, vmin, vmax) in meter voor imshow.
+    """
+    a, b = VIEWS[view][0]
+    c, sign = VIEW_DEPTH[view]
+    face_ids = np.asarray(face_ids)
+    counts = mesh.face_offsets[face_ids + 1] - mesh.face_offsets[face_ids]
+    groups = face_vertex_groups(mesh, face_ids)
+
+    hall = np.concatenate([g[:, :, a].ravel() for g in groups.values()])
+    vall = np.concatenate([g[:, :, b].ravel() for g in groups.values()])
+    if extent is None:
+        hmin, vmin = float(hall.min()), float(vall.min())
+        nh = int(np.ceil((hall.max() - hmin) / dx)) + 2
+        nv = int(np.ceil((vall.max() - vmin) / dx)) + 2
+    else:
+        hmin, hmax, vmin, vmax = (float(e) for e in extent)
+        nh = int(np.ceil((hmax - hmin) / dx)) + 1
+        nv = int(np.ceil((vmax - vmin) / dx)) + 1
+
+    # per vertexaantal-groep de pixel-bbox berekenen; de groepen hebben
+    # verschillende breedte k, dus NIET de (n, k)-arrays concateneren,
+    # maar per groep reduceren naar 1D en dáár concateneren
+    h0_l, h1_l, v0_l, v1_l, depth_l, labels_l = [], [], [], [], [], []
+    for k in np.unique(counts):
+        g = groups[int(k)]
+        ph = (g[:, :, a] - hmin) / dx
+        pv = (g[:, :, b] - vmin) / dx
+        g0, g1, g2, g3 = _bbox_arrays(ph, pv, nh, nv)
+        h0_l.append(g0)
+        h1_l.append(g1)
+        v0_l.append(g2)
+        v1_l.append(g3)
+        depth_l.append(sign * g[:, :, c].mean(axis=1))
+        # originele rijnummers in face_ids (face_vertex_groups groepeert op
+        # vertexaantal, dus de concatenatie-volgorde is gegroepeerd)
+        labels_l.append(np.nonzero(counts == k)[0].astype(np.int64))
+    h0 = np.concatenate(h0_l)
+    h1 = np.concatenate(h1_l)
+    v0 = np.concatenate(v0_l)
+    v1 = np.concatenate(v1_l)
+    depth = np.concatenate(depth_l)
+    labels = np.concatenate(labels_l)
+
+    # painter's algorithm: van ver naar dichtbij tekenen (oplopende diepte),
+    # de dichtstbijzijnde face wordt dus het laatst geschreven en wint
+    order = np.argsort(depth, kind="stable")
+    h0, h1, v0, v1 = h0[order], h1[order], v0[order], v1[order]
+    lab = labels[order]
+    idx = np.full((nv, nh), -1, dtype=np.int32)
+    _rasterize_bboxes(h0, h1, v0, v1, nh, nv, idx, labels=lab)
+    if extent is None:
+        extent = (hmin, hmin + nh * dx, vmin, vmin + nv * dx)
+    return idx, tuple(float(e) for e in extent)
+
+
+def cp_image_from_index(idx: np.ndarray, values: np.ndarray) -> np.ndarray:
+    """Zet een face-index-beeld om in een float32 veld-beeld (NaN = achtergrond).
+
+    values: per face (in de volgorde van face_ids waarom idx is gebouwd).
+    """
+    values = np.asarray(values, dtype=np.float32)
+    img = np.full(idx.shape, np.nan, dtype=np.float32)
+    m = idx >= 0
+    img[m] = values[idx[m]]
+    return img
 
 
 def decimate_triangles(

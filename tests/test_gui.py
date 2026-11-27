@@ -190,5 +190,57 @@ class ComputeGeometryPayloadTest(unittest.TestCase):
         self.assertEqual(len(kleuren), payload[5])
 
 
+class CpRangeTest(unittest.TestCase):
+    def test_cp_range_is_vast_min2_tot_1(self):
+        # besluit 010: de Cp-aanzichten in het scherm gebruiken het vaste
+        # bereik -2 t/m 1 (gui.CP_RANGE), niet de automatische max|Cp|
+        self.assertEqual(gui.CP_RANGE, (-2.0, 1.0))
+
+
+class ComputeCpPayloadTest(unittest.TestCase):
+    """compute_cp_payload: Cp-distributie op de body-faces (display-vrij)."""
+
+    def test_cp_payload_op_fixturecase(self):
+        import numpy as np
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = os.path.join(tmp, "Run_Test_020")
+            StructuredCase(4, 3, 3, 0.1, 0.1, 0.1).write(case_dir, time="2")
+            payload, warns = gui.compute_cp_payload(case_dir, ("pilot",))
+        views, bmin, bmax, n, cpmin, cpmax, tdir, uref = payload
+        # dezelfde drie aanzichten als de geometrie
+        self.assertEqual(set(views), {"front", "side", "top"})
+        self.assertEqual(tdir, "2")
+        self.assertAlmostEqual(uref, 16.0)
+        # fixture: p = 10 m2/s2 in elke cel -> Cp = 10 / (0.5 * 16^2)
+        self.assertAlmostEqual(cpmin, 10.0 / (0.5 * 16.0**2), places=5)
+        self.assertAlmostEqual(cpmax, cpmin, places=5)
+        self.assertEqual(n, 4)  # pilot-patch van de fixture: 4 faces
+        for _v, (cp_img, extent) in views.items():
+            self.assertEqual(len(extent), 4)
+            finite = cp_img[np.isfinite(cp_img)]
+            self.assertGreater(finite.size, 0)
+            self.assertTrue(np.allclose(finite, cpmin, atol=1e-5))
+            # achtergrond is NaN
+            self.assertTrue(np.isnan(cp_img[~np.isfinite(cp_img)]).all())
+        # pMean ontbreekt in de fixture -> waarschuwing (besluit 001)
+        self.assertTrue(any("pMean" in w for w in warns))
+
+    def test_cp_payload_zonder_u_inlet_is_fout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = os.path.join(tmp, "Run_Test_021")
+            StructuredCase(4, 3, 3, 0.1, 0.1, 0.1).write(case_dir, time="2")
+            os.remove(os.path.join(case_dir, "system", "Variables"))
+            with self.assertRaises(ValueError):
+                gui.compute_cp_payload(case_dir, ("pilot",))
+
+    def test_cp_payload_onbekende_patch_is_fout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = os.path.join(tmp, "Run_Test_022")
+            StructuredCase(4, 3, 3, 0.1, 0.1, 0.1).write(case_dir, time="2")
+            with self.assertRaises(ValueError):
+                gui.compute_cp_payload(case_dir, ("bestaat_niet",))
+
+
 if __name__ == "__main__":
     unittest.main()

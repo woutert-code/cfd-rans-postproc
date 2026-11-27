@@ -151,5 +151,118 @@ class TestFigures(GeometrieTestBase):
         self.assertIn("3D", ax.get_title())
 
 
+class TestRasterViewIndex(GeometrieTestBase):
+    def test_index_beeld_op_fixture(self):
+        dx = 0.005
+        idx, extent = geometrie.raster_view_index(self.mesh, self.ids, "front", dx=dx)
+        vals = idx[idx >= 0]
+        self.assertGreater(vals.size, 0)
+        # indexen zijn rijnummers in face_ids
+        self.assertTrue(set(vals.tolist()) <= set(range(len(self.ids))))
+        #zelfde dekking als het bool-masker van raster_view
+        opp = float((idx >= 0).sum()) * dx * dx
+        self.assertAlmostEqual(opp, 0.04, delta=0.005)
+        self.assertEqual(len(extent), 4)
+
+    def test_painter_dichtstbijzijnde_face_wint(self):
+        # synthetische mesh: twee quads met dezelfde y-z-projectie, op x=0 en x=1
+        pts = np.array(
+            [
+                [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0], [1.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+        mesh = of_io.FoamMesh(
+            pts,
+            np.array([0, 4, 8], dtype=np.int32),
+            np.array([0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int32),
+            np.array([0, 0], dtype=np.int32),
+            np.array([], dtype=np.int32),
+            [],
+        )
+        ids = np.array([0, 1])  # face 0 op x=0, face 1 op x=1
+        idx, _extent = geometrie.raster_view_index(mesh, ids, "front", dx=0.1)
+        # front-camera kijkt vanaf -x: face 0 (x=0) is het dichtstbij en wint
+        vals = idx[idx >= 0]
+        self.assertGreater(vals.size, 0)
+        self.assertTrue((vals == 0).all())
+
+    def test_gemixte_driehoeken_en_quads(self):
+        # regressie: faces met verschillend vertexaantal (3 en 4, zoals in
+        # een echte polyMesh) mogen niet crashen op np.concatenate
+        pts = np.array(
+            [
+                [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],  # driehoek
+                [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0], [1.0, 0.0, 1.0],  # quad
+            ],
+            dtype=np.float32,
+        )
+        mesh = of_io.FoamMesh(
+            pts,
+            np.array([0, 3, 7], dtype=np.int32),
+            np.array([0, 1, 2, 3, 4, 5, 6], dtype=np.int32),
+            np.array([0, 0], dtype=np.int32),
+            np.array([], dtype=np.int32),
+            [],
+        )
+        ids = np.array([0, 1])
+        for view in ("front", "side", "top"):
+            idx, extent = geometrie.raster_view_index(mesh, ids, view, dx=0.1)
+            self.assertGreater((idx >= 0).sum(), 0)
+            self.assertEqual(len(extent), 4)
+            vals = idx[idx >= 0]
+            self.assertTrue(set(vals.tolist()) <= {0, 1})
+
+    def test_cp_image_from_index(self):
+        idx = np.array([[-1, 0], [1, -1]], dtype=np.int32)
+        img = geometrie.cp_image_from_index(
+            idx, np.array([2.0, 3.0], dtype=np.float32)
+        )
+        self.assertTrue(np.isnan(img[0, 0]))
+        self.assertEqual(float(img[0, 1]), 2.0)
+        self.assertEqual(float(img[1, 0]), 3.0)
+        self.assertTrue(np.isnan(img[1, 1]))
+
+
+class TestCpFigure(GeometrieTestBase):
+    def test_cp_figuur_heeft_beeld_en_colorbar(self):
+        idx, extent = geometrie.raster_view_index(self.mesh, self.ids, "front", dx=0.01)
+        cp_img = geometrie.cp_image_from_index(
+            idx, np.full(len(self.ids), 0.5, dtype=np.float32)
+        )
+        fig = geometrie.make_cp_view_figure("front", cp_img, extent)
+        ax = fig.axes[0]
+        self.assertEqual(len(ax.images), 1)
+        self.assertIn("Cp", ax.get_title())
+        self.assertEqual(ax.get_xlabel(), "y [m]")
+        self.assertEqual(ax.get_ylabel(), "z [m]")
+        # colorbar op een tweede as; symmetrische schaal rond 0
+        self.assertEqual(len(fig.axes), 2)
+        self.assertEqual(tuple(ax.images[0].get_clim()), (-0.5, 0.5))
+
+    def test_cp_figuur_met_expliciet_bereik(self):
+        # besluit 010: vast bereik -2 t/m 1 (vmin/vmax doorgegeven)
+        idx, extent = geometrie.raster_view_index(self.mesh, self.ids, "front", dx=0.01)
+        cp_img = geometrie.cp_image_from_index(
+            idx, np.full(len(self.ids), 5.0, dtype=np.float32)  # buiten bereik
+        )
+        fig = geometrie.make_cp_view_figure(
+            "front", cp_img, extent, vmin=-2.0, vmax=1.0
+        )
+        self.assertEqual(tuple(fig.axes[0].images[0].get_clim()), (-2.0, 1.0))
+
+    def test_cp_figuur_zonder_titel_voor_ingebouwd_panel(self):
+        idx, extent = geometrie.raster_view_index(self.mesh, self.ids, "top", dx=0.01)
+        cp_img = geometrie.cp_image_from_index(
+            idx, np.full(len(self.ids), -0.25, dtype=np.float32)
+        )
+        fig = geometrie.make_cp_view_figure(
+            "top", cp_img, extent, figsize=(3.1, 2.5), with_title=False
+        )
+        self.assertEqual(fig.axes[0].get_title(), "")
+        self.assertEqual(fig.axes[0].get_xlabel(), "x [m]")
+
+
 if __name__ == "__main__":
     unittest.main()

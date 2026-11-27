@@ -34,6 +34,9 @@ from .__main__ import DEFAULT_SLICE_X
 # atleetpatches waarvoor de geometrie wordt getoond (zelfde default als process_case)
 BODY_PATCHES: tuple[str, ...] = ("pilot", "stoker")
 
+# vast kleurenbereik van de Cp-aanzichten (besluit 010): vmin, vmax
+CP_RANGE = (-2.0, 1.0)
+
 # warn-meldingen bij het terugvallen van de geometrie op de polyMesh
 _WARN_STL_PATCHEN = (
     "STL-geometrie niet bruikbaar voor patches {patches}; val terug op de "
@@ -117,6 +120,72 @@ def compute_geometry_payload(case_dir, body_patches=BODY_PATCHES):
     )
     payload = (
         views, polys3d, bmin, bmax, len(ids), len(ids3d), s, "polymesh", None
+    )
+    return payload, warns
+
+
+def compute_cp_payload(case_dir, body_patches=BODY_PATCHES, time_dir=None,
+                       u_ref=None, dx=geometrie.DEFAULT_RASTER_DX):
+    """Bereken de Cp-distributie op de atleetpatches (display-vrij).
+
+    Cp = (p_wand - p_ref) / (0.5 * u_ref**2) per body-face, met p_ref = 0.
+    p is kinematisch [m2/s2]; de wandwaarde volgt via de owner-cel
+    (zeroGradient), net als bij krachten.pressure_drag. pMean heeft de
+    voorkeur, anders p (besluit 001, met waarschuwing); u_ref is standaard
+    u_inlet uit system/Variables. De STL-route kan geen Cp leveren (een STL
+    heeft geen veldwaarden), dus de Cp-aanzichten gebruiken altijd de
+    polyMesh-body-faces.
+
+    Retourneert (payload, waarschuwingen) met payload =
+    (views, bmin, bmax, n_faces, cp_min, cp_max, time_dir, u_ref), waarbij
+    views = {view: (cp_img, extent)}: dezelfde drie aanzichten als de
+    geometrie, maar met per pixel de Cp van de zichtbare face (NaN buiten
+    het lichaam), gerasterd met painter's algorithm (geometrie.VIEW_DEPTH).
+    """
+    warns: list[str] = []
+    mesh = of_io.read_mesh(case_dir)
+    patch_ids = {}
+    for name in body_patches:
+        try:
+            patch_ids[name] = mesh.face_ids_of_patch(name)
+        except KeyError:
+            warns.append(f"patch '{name}' niet gevonden in de mesh: overgeslagen")
+    if not patch_ids:
+        raise ValueError(
+            f"geen van de atleetpatches {tuple(body_patches)} gevonden in de mesh"
+        )
+    if time_dir is None:
+        time_dir = of_io.latest_time(case_dir)
+    t = os.path.join(case_dir, time_dir)
+    p_mean = os.path.join(t, "pMean")
+    p_path = p_mean if os.path.exists(p_mean) else os.path.join(t, "p")
+    if not os.path.exists(p_mean):
+        warns.append(f"pMean ontbreekt in tijdmap {time_dir}; val terug op p")
+    p = of_io.read_internal_field(p_path)
+    if u_ref is None:
+        u_ref = of_io.read_variable(case_dir, "u_inlet")
+    if u_ref is None or u_ref == 0:
+        raise ValueError(
+            "geen referentiesnelheid voor Cp: geen u_ref gegeven en 'u_inlet' "
+            "ontbreekt in system/Variables"
+        )
+    ids_all = np.concatenate(list(patch_ids.values()))
+    owners = mesh.owner[ids_all].astype(np.int64)
+    p_wall = p[owners].astype(np.float64)
+    cp = p_wall / (0.5 * u_ref ** 2)  # p_ref = 0 bij kinematische druk
+    bmin, bmax = geometrie.bounding_box(mesh, ids_all)
+    views = {}
+    for v in ("front", "side", "top"):
+        a, b = geometrie.VIEWS[v][0]
+        ext = (float(bmin[a]), float(bmax[a]), float(bmin[b]), float(bmax[b]))
+        idx, ext = geometrie.raster_view_index(mesh, ids_all, v, dx=dx, extent=ext)
+        views[v] = (geometrie.cp_image_from_index(idx, cp), ext)
+    finite = cp[np.isfinite(cp)]
+    payload = (
+        views, bmin, bmax, len(ids_all),
+        float(finite.min()) if finite.size else float("nan"),
+        float(finite.max()) if finite.size else float("nan"),
+        time_dir, float(u_ref),
     )
     return payload, warns
 
@@ -215,6 +284,10 @@ class PostprocApp:
         self._views_queue = queue.Queue()
         self._views_token = 0  # verlopen resultaten van oudere selecties negeren
         self._views_polling = False
+        self._cp_queue = queue.Queue()
+        self._cp_cache = {}  # case -> Cp-payload (zelfde sessie)
+        self._cp_token = 0
+        self._cp_polling = False
         self._build_widgets()
 
     def _build_widgets(self):
@@ -267,8 +340,12 @@ class PostprocApp:
             frm, text="Geometrie tonen", command=self._show_geometry
         )
         self.geo_btn.grid(row=5, column=1, sticky="w", pady=(6, 2))
+        self.cp_btn = ttk.Button(
+            frm, text="Cp verdeling", command=self._show_cp
+        )
+        self.cp_btn.grid(row=5, column=2, sticky="w", pady=(6, 2))
         ttk.Label(frm, textvariable=self.status_var).grid(
-            row=5, column=2, columnspan=2, sticky="w", **pad
+            row=5, column=3, sticky="w", **pad
         )
 
         ttk.Label(frm, text="Log:").grid(row=6, column=0, sticky="nw", **pad)
@@ -483,17 +560,118 @@ class PostprocApp:
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
         self._views_placeholder.pack_forget()
-        for view, _naam in (
+        for view, naam in (
             ("front", "Vooraanzicht"),
             ("side", "Zijaanzicht"),
             ("top", "Bovenaanzicht"),
         ):
             lf = self._view_frames[view]
+            lf.configure(text=naam)  # bij terugschakelen vanaf de Cp-aanzichten
             for w in lf.winfo_children():
                 w.destroy()
             mask, extent = views[view]
             fig = geometrie.make_view_figure(
                 view, mask, extent, figsize=(3.1, 2.5), with_title=False
+            )
+            canvas = FigureCanvasTkAgg(fig, master=lf)
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+            canvas.draw()
+            lf.pack(side="left", fill="both", expand=True, padx=(0, 6), pady=2)
+        self.root.update_idletasks()
+
+    def _show_cp(self):
+        """Vervang de 2D-aanzichten door dezelfde aanzichten met de Cp-verdeling.
+
+        Cp komt uit de polyMesh (wanddruk via owner-cel) + het drukveld; de
+        berekening draait in een achtergrondthread. Het resultaat wordt per
+        case gecached, zodat een tweede klik direct tekent.
+        """
+        case = self.case_var.get().strip()
+        if not case or not os.path.isdir(case):
+            messagebox.showerror("Geen case-map", "Kies eerst een geldige CFD-case map.")
+            return
+        if case in self._cp_cache:
+            self._draw_cp_panels(self._cp_cache[case])
+            self.status_var.set("Cp-aanzichten uit cache geladen.")
+            return
+        missing = missing_polymesh_files(case)
+        if missing:
+            messagebox.showerror(
+                "Mesh incompleet",
+                f"In constant/polyMesh ontbreken: {', '.join(missing)}.\n"
+                "De Cp-verdeling heeft de mesh nodig (druk per wandface).",
+            )
+            return
+        self.cp_btn.configure(state="disabled")
+        self._cp_token += 1
+        token = self._cp_token
+        self.status_var.set("Cp-verdeling laden (mesh + drukveld)...")
+
+        def worker():
+            try:
+                payload, warns = compute_cp_payload(case, BODY_PATCHES)
+                self._cp_queue.put(("CP_OK", token, payload, warns))
+            except Exception as exc:  # wordt in het scherm gemeld
+                self._cp_queue.put(("CP_ERR", token, exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+        if not self._cp_polling:
+            self._cp_polling = True
+            self.root.after(100, self._poll_cp)
+
+    def _poll_cp(self):
+        try:
+            msg = self._cp_queue.get_nowait()
+        except queue.Empty:
+            self.root.after(100, self._poll_cp)
+            return
+        if msg[0] == "CP_OK":
+            _status, token, payload, warns = msg
+            self.cp_btn.configure(state="normal")
+            if token != self._cp_token:  # verouderd resultaat negeren
+                self.root.after(100, self._poll_cp)
+                return
+            case = self.case_var.get().strip()
+            self._cp_cache[case] = payload
+            for w in warns:
+                self._append_log(f"WAARSCHUWING: {w}", "WARNING")
+            self._draw_cp_panels(payload)
+            _views, _bmin, _bmax, n, cpmin, cpmax, tdir, uref = payload
+            self.status_var.set(
+                f"Cp-aanzichten geladen (tijdmap {tdir}, u_ref {uref:g} m/s, "
+                f"{n} faces, Cp in [{cpmin:.3g}, {cpmax:.3g}])."
+            )
+        elif msg[0] == "CP_ERR":
+            _status, token, exc = msg
+            self.cp_btn.configure(state="normal")
+            if token != self._cp_token:
+                self.root.after(100, self._poll_cp)
+                return
+            self.status_var.set("Cp-verdeling laden mislukt.")
+            self._append_log(f"FOUT: Cp-verdeling laden: {exc}", "ERROR")
+            messagebox.showerror("Cp-verdeling mislukt", str(exc))
+        self.root.after(100, self._poll_cp)
+
+    def _draw_cp_panels(self, payload):
+        """Teken de drie 2D-aanzichten met Cp-kleuren in de bestaande panels."""
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        views, _bmin, _bmax, _n, _cpmin, _cpmax, _tdir, _uref = payload
+        vmin, vmax = CP_RANGE
+        self._views_placeholder.pack_forget()
+        for view, naam in (
+            ("front", "Vooraanzicht"),
+            ("side", "Zijaanzicht"),
+            ("top", "Bovenaanzicht"),
+        ):
+            lf = self._view_frames[view]
+            lf.configure(text=f"{naam} — Cp")
+            for w in lf.winfo_children():
+                w.destroy()
+            cp_img, extent = views[view]
+            fig = geometrie.make_cp_view_figure(
+                view, cp_img, extent, vmin=vmin, vmax=vmax,
+                figsize=(3.1, 2.5), with_title=False,
             )
             canvas = FigureCanvasTkAgg(fig, master=lf)
             canvas.get_tk_widget().pack(fill="both", expand=True)
