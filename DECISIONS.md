@@ -285,6 +285,25 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
+## Besluit 011: KNWU-CFD-flowvis_test wordt niet meer gesynchroniseerd
+
+**Datum:** 2026-11-27
+**Status:** Actief
+**Beslissing:**
+
+> **Vanaf 2026-11-27 is `cfd-rans-postproc` (github.com/woutert-code/cfd-rans-postproc) de enige leidende repository. `KNWU-CFD-flowvis_test` wordt niet meer up-to-date gehouden met deze repo: wijzigingen worden alleen in `cfd-rans-postproc` gecommit en gepusht. De branch `backup/flowvis-oud` in KNWU-CFD-flowvis_test (op `0fc3387`) bewaart de oude flowvis-inhoud voor het geval die ooit nodig is.**
+
+### Motivatie
+
+1. Eén bron van waarheid voorkomt verwarring over welke repo actueel is.
+2. KNWU-CFD-flowvis_test was een test-/referentierepo; de doorontwikkeling (t/m besluit 010) zit in `cfd-rans-postproc`.
+
+### Impact
+
+- Geen code-impact; het is een werkafspraak: commit/push alleen naar `origin` van `cfd-rans-postproc` (bovenop besluit 006: pas na expliciete toestemming).
+
+---
+
 ## Overzicht van actieve besluiten
 
 | Nr | Titel | Datum | Status |
@@ -299,3 +318,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | 008 | Geometrie bij voorkeur uit STL-bestanden | 2026-11-25 | Actief |
 | 009 | 2D-aanzichten standaard in startscherm | 2026-11-25 | Actief |
 | 010 | Cp-verdeling op de 2D-aanzichten via "Cp verdeling" | 2026-11-27 | Actief |
+| 011 | KNWU-CFD-flowvis_test niet meer syncen met deze repo | 2026-11-27 | Actief |
