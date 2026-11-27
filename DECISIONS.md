@@ -257,6 +257,34 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 
 ---
 
+## Besluit 010: Cp-verdeling op de 2D-aanzichten via "Cp verdeling"
+
+**Datum:** 2026-11-27
+**Status:** Actief
+**Beslissing:**
+
+> **De knop "Cp verdeling" in het startscherm (rechts naast "Geometrie tonen") vervangt de drie 2D-aanzichten (voor-, zij- en bovenaanzicht) door dezelfde aanzichten gekleurd naar de drukcoëfficiënt Cp = (p_wand − p_ref) / (½·u_ref²) met p_ref = 0. Per body-face volgt de wanddruk uit de owner-cel (zeroGradient), net als bij `krachten.pressure_drag`; p is kinematisch [m²/s²]. `pMean` heeft de voorkeur met fallback op `p` (besluit 001, met waarschuwing in het logvenster); u_ref = `u_inlet` uit `system/Variables`. De STL-route kan geen Cp leveren (een STL bevat geen veldwaarden), dus de Cp-aanzichten gebruiken altijd de polyMesh-body-faces. Per pixel is de zichtbare face de dichtstbijzijnde t.o.v. de camerakant van de view (painter's algorithm via `geometrie.VIEW_DEPTH`: front vanaf −x, side vanaf +y, top vanaf +z). Kleurschaal: divergent `RdBu_r` met **vast bereik [−2, 1]** (`gui.CP_RANGE`), inclusief colorbar.**
+
+### Toepassing
+
+- `gui.compute_cp_payload(case_dir, body_patches)` (display-vrij, deelbaar met tests): leest mesh + drukveld, berekent Cp per face en rasteriseert per view een face-index-beeld (`geometrie.raster_view_index`) dat met `geometrie.cp_image_from_index` naar een Cp-beeld (NaN = achtergrond) wordt omgezet; figuur via `geometrie.make_cp_view_figure`.
+- In het startscherm: knop "Cp verdeling" op rij 5, kolom 2 (direct rechts van "Geometrie tonen"); laden gebeurt in een achtergrondthread met token (verouderde resultaten worden genegeerd) en per-case sessie-cache. De bestaande 2D-panelen worden vervangen door de Cp-figuren (paneeltitel krijgt " — Cp"); bij opnieuw kiezen van een case-map keren de gewone geometrie-aanzichten terug.
+- De berekening vereist de polyMesh: bij ontbrekende polyMesh-bestanden volgt dezelfde pre-check/melding als bij "Start postprocessing".
+
+### Motivatie
+
+1. **Versie 2 uit het plan** (plan-van-aanpak.md §9): Cp-distributie op de geometrie — dit is de eerste stap, direct in het startscherm bij de bestaande aanzichten.
+2. Cp is een veldwaarde op de mesh-wanden; de STL's (besluit 008) kunnen die niet leveren, dus de polyMesh-route is hier noodzakelijk (bij ~70M-cel cases kost het lezen van de mesh minuten; de voortgang is zichtbaar in de statusregel).
+3. Dezelfde drie aanzichten als de geometrie (front/zij/boven), zodat de Cp-verdeling direct te vergelijken is met de silhouette.
+
+### Impact
+
+- Nieuw in `geometrie.py`: `VIEW_DEPTH`, `raster_view_index`, `cp_image_from_index`, `make_cp_view_figure`, en de gedeelde raster-core `_bbox_arrays`/`_rasterize_bboxes` (waar `_rasterize_triangles_2d` nu ook op draait).
+- Nieuw in `gui.py`: `compute_cp_payload`, knop `cp_btn`, `_show_cp`/`_poll_cp`/`_draw_cp_panels`, `_cp_cache`/`_cp_token`/`_cp_queue`.
+- Tests: `TestRasterViewIndex`/`TestCpFigure` (incl. painter's-algorithm met synthetische mesh), `ComputeCpPayloadTest` (fixturecase: Cp = p/(½·u_ref²), pMean-waarschuwing, fouten bij ontbrekende u_inlet/patch).
+
+---
+
 ## Overzicht van actieve besluiten
 
 | Nr | Titel | Datum | Status |
@@ -270,3 +298,4 @@ WARNING: mean-velden ontbreken: <lijst>; valt terug op niet-gemiddelde velden
 | 007 | Geometrie in startscherm: 2D-views + draaibare 3D | 2026-11-24 | Actief |
 | 008 | Geometrie bij voorkeur uit STL-bestanden | 2026-11-25 | Actief |
 | 009 | 2D-aanzichten standaard in startscherm | 2026-11-25 | Actief |
+| 010 | Cp-verdeling op de 2D-aanzichten via "Cp verdeling" | 2026-11-27 | Actief |

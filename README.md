@@ -55,6 +55,16 @@ resultaattabel die na afloop wordt gevuld.](docs/startscherm.png)
 Met **"Geometrie tonen"** opent een apart venster met een 3D-figuur van de
 geometrie, dat met de muis draaibaar is (scroll = zoomen).
 
+Met **"Cp verdeling"** (rechts naast "Geometrie tonen") worden de drie
+2D-aanzichten in het scherm **vervangen** door dezelfde aanzichten (voor,
+zij, boven) gekleurd naar de drukcoëfficiënt Cp = p_wand / (½·u_ref²) op het
+atleetoppervlak: rood = hoge druk, blauw = lage druk, met colorbar
+(vast bereik −2 t/m 1). Cp volgt
+uit de polyMesh en het drukveld (`pMean`, met fallback op `p`; u_ref =
+`u_inlet` uit `system/Variables`), dus hiervoor wordt de mesh gelezen — bij
+grote cases kan het laden even duren. Kies opnieuw een case-map om terug te
+schakelen naar de gewone geometrie-aanzichten.
+
 De overige instellingen staan vast op de standaardwaarden (atleetpatches
 `pilot,stoker`, rho 1,225 kg/m³, u-ref uit `u_inlet` in `system/Variables`,
 laatst weggeschreven tijdmap, strookdikte 0,02 m); voor afwijkende waarden
@@ -107,6 +117,11 @@ De sectie hierboven vertelt hoe je de aanzichten *ziet*; hier staat hoe ze
   oppervlakte-cel, ≤ 20.000 polygonen) en worden de polygonen licht
   opgeblazen rond hun zwaartepunt, zodat het solide is zonder gaten bij
   grote meshes (zie `src/cfd_postproc/geometrie.py`).
+- De **Cp-aanzichten** (knop "Cp verdeling") gebruiken altijd de
+  polyMesh-body-faces: Cp is een veldwaarde per wandface en zit niet in de
+  STL's. Per pixel wordt de dichtstbijzijnde face getoond (painter's
+  algorithm, camerakant per aanzicht: front vanaf −x, zij vanaf +y, boven
+  vanaf +z).
 
 De manier waarop slices worden gemaakt wordt in een volgende versie
 verbeterd (plan-van-aanpak.md §12, punt 7).
